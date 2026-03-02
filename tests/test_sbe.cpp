@@ -198,7 +198,7 @@ TEST_CASE("SBE enum encode/decode", "[sbe][enum]") {
 // MessageHeader Tests
 // ============================================================================
 
-TEST_CASE("MessageHeader encode/decode", "[sbe][header]") {
+TEST_CASE("MessageHeader encode/decode", "[sbe][header][regression]") {
     alignas(8) char buffer[256]{};
 
     SECTION("Normal header") {
@@ -237,7 +237,7 @@ TEST_CASE("NewOrderSingleCodec layout constants", "[sbe][nos]") {
     REQUIRE(NewOrderSingleCodec::TEMPLATE_ID == 1u);
 }
 
-TEST_CASE("NewOrderSingleCodec encode/decode roundtrip", "[sbe][nos]") {
+TEST_CASE("NewOrderSingleCodec encode/decode roundtrip", "[sbe][nos][regression]") {
     alignas(8) char buffer[NewOrderSingleCodec::TOTAL_SIZE]{};
 
     FixedPrice price;
@@ -272,7 +272,7 @@ TEST_CASE("NewOrderSingleCodec encode/decode roundtrip", "[sbe][nos]") {
     REQUIRE(decoder.transactTime().nanos == ts.nanos);
 }
 
-TEST_CASE("NewOrderSingleCodec header validation", "[sbe][nos]") {
+TEST_CASE("NewOrderSingleCodec header validation", "[sbe][nos][regression]") {
     alignas(8) char buffer[NewOrderSingleCodec::TOTAL_SIZE]{};
 
     NewOrderSingleCodec::wrapForEncode(buffer, sizeof(buffer))
@@ -318,7 +318,7 @@ TEST_CASE("ExecutionReportCodec layout constants", "[sbe][execrpt]") {
     REQUIRE(ExecutionReportCodec::TEMPLATE_ID == 8u);
 }
 
-TEST_CASE("ExecutionReportCodec encode/decode roundtrip", "[sbe][execrpt]") {
+TEST_CASE("ExecutionReportCodec encode/decode roundtrip", "[sbe][execrpt][regression]") {
     alignas(8) char buffer[ExecutionReportCodec::TOTAL_SIZE]{};
 
     FixedPrice price, lastPx, avgPx;
@@ -374,7 +374,7 @@ TEST_CASE("ExecutionReportCodec encode/decode roundtrip", "[sbe][execrpt]") {
     REQUIRE(decoder.transactTime().nanos == ts.nanos);
 }
 
-TEST_CASE("ExecutionReportCodec header validation", "[sbe][execrpt]") {
+TEST_CASE("ExecutionReportCodec header validation", "[sbe][execrpt][regression]") {
     alignas(8) char buffer[ExecutionReportCodec::TOTAL_SIZE]{};
 
     ExecutionReportCodec::wrapForEncode(buffer, sizeof(buffer))
@@ -408,7 +408,7 @@ TEST_CASE("ExecutionReportCodec alignment verification", "[sbe][execrpt]") {
 // Dispatch Tests
 // ============================================================================
 
-TEST_CASE("Dispatch NewOrderSingle", "[sbe][dispatch]") {
+TEST_CASE("Dispatch NewOrderSingle", "[sbe][dispatch][regression]") {
     alignas(8) char buffer[NewOrderSingleCodec::TOTAL_SIZE]{};
 
     NewOrderSingleCodec::wrapForEncode(buffer, sizeof(buffer))
@@ -428,7 +428,7 @@ TEST_CASE("Dispatch NewOrderSingle", "[sbe][dispatch]") {
     REQUIRE(dispatched);
 }
 
-TEST_CASE("Dispatch ExecutionReport", "[sbe][dispatch]") {
+TEST_CASE("Dispatch ExecutionReport", "[sbe][dispatch][regression]") {
     alignas(8) char buffer[ExecutionReportCodec::TOTAL_SIZE]{};
 
     ExecutionReportCodec::wrapForEncode(buffer, sizeof(buffer))
@@ -448,7 +448,7 @@ TEST_CASE("Dispatch ExecutionReport", "[sbe][dispatch]") {
     REQUIRE(dispatched);
 }
 
-TEST_CASE("Dispatch unknown message", "[sbe][dispatch]") {
+TEST_CASE("Dispatch unknown message", "[sbe][dispatch][regression]") {
     alignas(8) char buffer[256]{};
 
     // Write invalid template ID
@@ -466,7 +466,7 @@ TEST_CASE("Dispatch unknown message", "[sbe][dispatch]") {
     REQUIRE(dispatched);
 }
 
-TEST_CASE("Dispatch empty buffer", "[sbe][dispatch]") {
+TEST_CASE("Dispatch empty buffer", "[sbe][dispatch][regression]") {
     alignas(8) char buffer[256]{};
 
     bool dispatched = false;
@@ -505,7 +505,7 @@ TEST_CASE("SBE type traits", "[sbe][traits]") {
 // Edge Cases
 // ============================================================================
 
-TEST_CASE("NewOrderSingleCodec edge cases", "[sbe][nos][edge]") {
+TEST_CASE("NewOrderSingleCodec edge cases", "[sbe][nos][edge][regression]") {
     alignas(8) char buffer[NewOrderSingleCodec::TOTAL_SIZE]{};
 
     SECTION("Empty strings") {

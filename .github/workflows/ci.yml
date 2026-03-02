@@ -105,7 +105,7 @@ jobs:
       - name: Install dependencies
         run: |
           sudo apt-get update
-          sudo apt-get install -y ninja-build liburing-dev
+          sudo apt-get install -y ninja-build liburing-dev jq
 
       - name: Configure
         env:
@@ -126,3 +126,6 @@ jobs:
 
       - name: Test
         run: ctest --test-dir build --output-on-failure
+
+      - name: Performance Regression Check
+        run: ./scripts/check_perf_regression.sh 10000

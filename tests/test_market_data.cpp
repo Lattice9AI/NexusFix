@@ -21,7 +21,7 @@ static std::string make_fix_message(std::string_view msg) {
 // MarketDataRequest Tests
 // ============================================================================
 
-TEST_CASE("MarketDataRequest Builder - Basic subscription", "[market_data][request]") {
+TEST_CASE("MarketDataRequest Builder - Basic subscription", "[market_data][request][regression]") {
     MessageAssembler asm_;
     MarketDataRequest::Builder builder;
 
@@ -65,7 +65,7 @@ TEST_CASE("MarketDataRequest Builder - Basic subscription", "[market_data][reque
     REQUIRE(msg_str.contains("55=GOOGL"));
 }
 
-TEST_CASE("MarketDataRequest Builder - Snapshot only", "[market_data][request]") {
+TEST_CASE("MarketDataRequest Builder - Snapshot only", "[market_data][request][regression]") {
     MessageAssembler asm_;
     MarketDataRequest::Builder builder;
 
@@ -96,7 +96,7 @@ TEST_CASE("MarketDataRequest Builder - Snapshot only", "[market_data][request]")
 // MarketDataSnapshotFullRefresh Tests
 // ============================================================================
 
-TEST_CASE("MarketDataSnapshotFullRefresh Parser - Basic snapshot", "[market_data][snapshot]") {
+TEST_CASE("MarketDataSnapshotFullRefresh Parser - Basic snapshot", "[market_data][snapshot][regression]") {
     std::string raw_msg = make_fix_message(
         "8=FIX.4.4|9=150|35=W|49=SERVER|56=CLIENT|34=1|52=20260122-10:00:00.000|"
         "262=MD001|55=AAPL|268=3|"
@@ -119,7 +119,7 @@ TEST_CASE("MarketDataSnapshotFullRefresh Parser - Basic snapshot", "[market_data
     REQUIRE(msg.entry_count() == 3);
 }
 
-TEST_CASE("MarketDataSnapshotFullRefresh Parser - Iterate entries", "[market_data][snapshot][iterator]") {
+TEST_CASE("MarketDataSnapshotFullRefresh Parser - Iterate entries", "[market_data][snapshot][iterator][regression]") {
     std::string raw_msg = make_fix_message(
         "8=FIX.4.4|9=180|35=W|49=SERVER|56=CLIENT|34=1|52=20260122-10:00:00.000|"
         "262=MD002|55=GOOGL|268=2|"
@@ -160,7 +160,7 @@ TEST_CASE("MarketDataSnapshotFullRefresh Parser - Iterate entries", "[market_dat
 // MarketDataIncrementalRefresh Tests
 // ============================================================================
 
-TEST_CASE("MarketDataIncrementalRefresh Parser - Basic update", "[market_data][incremental]") {
+TEST_CASE("MarketDataIncrementalRefresh Parser - Basic update", "[market_data][incremental][regression]") {
     std::string raw_msg = make_fix_message(
         "8=FIX.4.4|9=120|35=X|49=SERVER|56=CLIENT|34=2|52=20260122-10:00:01.000|"
         "262=MD001|268=2|"
@@ -181,7 +181,7 @@ TEST_CASE("MarketDataIncrementalRefresh Parser - Basic update", "[market_data][i
     REQUIRE(msg.entry_count() == 2);
 }
 
-TEST_CASE("MarketDataIncrementalRefresh Parser - Update actions", "[market_data][incremental][actions]") {
+TEST_CASE("MarketDataIncrementalRefresh Parser - Update actions", "[market_data][incremental][actions][regression]") {
     std::string raw_msg = make_fix_message(
         "8=FIX.4.4|9=150|35=X|49=SERVER|56=CLIENT|34=3|52=20260122-10:00:02.000|"
         "268=3|"
@@ -224,7 +224,7 @@ TEST_CASE("MarketDataIncrementalRefresh Parser - Update actions", "[market_data]
 // MarketDataRequestReject Tests
 // ============================================================================
 
-TEST_CASE("MarketDataRequestReject Parser - Unknown symbol", "[market_data][reject]") {
+TEST_CASE("MarketDataRequestReject Parser - Unknown symbol", "[market_data][reject][regression]") {
     std::string raw_msg = make_fix_message(
         "8=FIX.4.4|9=100|35=Y|49=SERVER|56=CLIENT|34=1|52=20260122-10:00:00.000|"
         "262=MD001|281=0|58=Symbol not found|"
@@ -244,7 +244,7 @@ TEST_CASE("MarketDataRequestReject Parser - Unknown symbol", "[market_data][reje
     REQUIRE(msg.rejection_reason_name() == "UnknownSymbol");
 }
 
-TEST_CASE("MarketDataRequestReject Parser - Insufficient permissions", "[market_data][reject]") {
+TEST_CASE("MarketDataRequestReject Parser - Insufficient permissions", "[market_data][reject][regression]") {
     std::string raw_msg = make_fix_message(
         "8=FIX.4.4|9=90|35=Y|49=SERVER|56=CLIENT|34=2|52=20260122-10:00:00.000|"
         "262=MD002|281=2|58=Not authorized for this symbol|"
@@ -266,14 +266,14 @@ TEST_CASE("MarketDataRequestReject Parser - Insufficient permissions", "[market_
 // Market Data Types Tests
 // ============================================================================
 
-TEST_CASE("MDEntryType - Name conversion", "[market_data][types]") {
+TEST_CASE("MDEntryType - Name conversion", "[market_data][types][regression]") {
     REQUIRE(md_entry_type_name(MDEntryType::Bid) == "Bid");
     REQUIRE(md_entry_type_name(MDEntryType::Offer) == "Offer");
     REQUIRE(md_entry_type_name(MDEntryType::Trade) == "Trade");
     REQUIRE(md_entry_type_name(MDEntryType::SettlementPrice) == "SettlementPrice");
 }
 
-TEST_CASE("MDEntryType - Classification", "[market_data][types]") {
+TEST_CASE("MDEntryType - Classification", "[market_data][types][regression]") {
     REQUIRE(is_quote_type(MDEntryType::Bid));
     REQUIRE(is_quote_type(MDEntryType::Offer));
     REQUIRE_FALSE(is_quote_type(MDEntryType::Trade));
@@ -283,19 +283,19 @@ TEST_CASE("MDEntryType - Classification", "[market_data][types]") {
     REQUIRE_FALSE(is_trade_type(MDEntryType::Bid));
 }
 
-TEST_CASE("MDUpdateAction - Name conversion", "[market_data][types]") {
+TEST_CASE("MDUpdateAction - Name conversion", "[market_data][types][regression]") {
     REQUIRE(md_update_action_name(MDUpdateAction::New) == "New");
     REQUIRE(md_update_action_name(MDUpdateAction::Change) == "Change");
     REQUIRE(md_update_action_name(MDUpdateAction::Delete) == "Delete");
 }
 
-TEST_CASE("SubscriptionRequestType - Name conversion", "[market_data][types]") {
+TEST_CASE("SubscriptionRequestType - Name conversion", "[market_data][types][regression]") {
     REQUIRE(subscription_type_name(SubscriptionRequestType::Snapshot) == "Snapshot");
     REQUIRE(subscription_type_name(SubscriptionRequestType::SnapshotPlusUpdates) == "Subscribe");
     REQUIRE(subscription_type_name(SubscriptionRequestType::DisablePreviousSnapshot) == "Unsubscribe");
 }
 
-TEST_CASE("MDReqRejReason - Name conversion", "[market_data][types]") {
+TEST_CASE("MDReqRejReason - Name conversion", "[market_data][types][regression]") {
     REQUIRE(md_rej_reason_name(MDReqRejReason::UnknownSymbol) == "UnknownSymbol");
     REQUIRE(md_rej_reason_name(MDReqRejReason::DuplicateMDReqID) == "DuplicateMDReqID");
     REQUIRE(md_rej_reason_name(MDReqRejReason::UnsupportedMarketDepth) == "UnsupportedMarketDepth");

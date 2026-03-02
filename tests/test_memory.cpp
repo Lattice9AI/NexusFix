@@ -8,7 +8,7 @@ using namespace nfx;
 // AlignedBuffer Tests
 // ============================================================================
 
-TEST_CASE("AlignedBuffer", "[memory][aligned]") {
+TEST_CASE("AlignedBuffer", "[memory][aligned][regression]") {
     SECTION("Small buffer alignment") {
         SmallBuffer buf;
         auto ptr = reinterpret_cast<uintptr_t>(buf.data.data());
@@ -34,7 +34,7 @@ TEST_CASE("AlignedBuffer", "[memory][aligned]") {
 // FixedPool Tests
 // ============================================================================
 
-TEST_CASE("FixedPool allocation", "[memory][pool]") {
+TEST_CASE("FixedPool allocation", "[memory][pool][regression]") {
     FixedPool<64, 16> pool;
 
     SECTION("Initial state") {
@@ -98,7 +98,7 @@ TEST_CASE("FixedPool allocation", "[memory][pool]") {
 // MessagePool Tests
 // ============================================================================
 
-TEST_CASE("MessagePool tiered allocation", "[memory][pool]") {
+TEST_CASE("MessagePool tiered allocation", "[memory][pool][regression]") {
     MessagePool pool;
 
     SECTION("Small allocation") {
@@ -152,7 +152,7 @@ TEST_CASE("MessagePool tiered allocation", "[memory][pool]") {
 // PooledBuffer Tests
 // ============================================================================
 
-TEST_CASE("PooledBuffer RAII", "[memory][pool]") {
+TEST_CASE("PooledBuffer RAII", "[memory][pool][regression]") {
     MessagePool pool;
 
     SECTION("Auto deallocation") {

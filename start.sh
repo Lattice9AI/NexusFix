@@ -196,6 +196,32 @@ do_bench() {
     log_success "Benchmarks completed"
 }
 
+# Run regression tests (critical subset)
+do_regression() {
+    log_info "Running regression tests..."
+
+    if [ ! -x "${BIN_DIR}/tests/nexusfix_tests" ]; then
+        log_warn "Test binary not found, building first..."
+        do_build_with_tests
+    fi
+
+    "${BIN_DIR}/tests/nexusfix_tests" "[regression]" --colour-mode ansi
+    log_success "Regression tests passed"
+}
+
+# Run performance regression check
+do_perf_check() {
+    log_info "Running performance regression check..."
+
+    if [ ! -d "${BUILD_DIR}" ]; then
+        log_warn "Build directory not found, building first..."
+        do_build "Release"
+    fi
+
+    "${PROJECT_DIR}/scripts/check_perf_regression.sh" "$@"
+    log_success "Performance regression check completed"
+}
+
 # Run QuickFIX comparison benchmark
 do_compare() {
     local iterations="${1:-100000}"
@@ -243,7 +269,9 @@ do_help() {
     echo "  build              Build project (Release)"
     echo "  debug              Build project (Debug)"
     echo "  test               Run tests"
+    echo "  regression         Run regression tests (critical subset)"
     echo "  bench [N]          Run benchmarks (default: 100000 iterations)"
+    echo "  perf-check [N]     Run performance regression check (default: 10000 iterations)"
     echo "  compare [N]        Run QuickFIX vs NexusFIX comparison benchmark"
     echo "  client [host port] Run example client"
     echo "  all                Clean, build, test, bench"
@@ -278,8 +306,14 @@ main() {
         test)
             do_test
             ;;
+        regression)
+            do_regression
+            ;;
         bench|benchmark)
             do_bench "$@"
+            ;;
+        perf-check)
+            do_perf_check "$@"
             ;;
         compare)
             do_compare "$@"

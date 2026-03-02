@@ -43,7 +43,7 @@ const std::string HEARTBEAT =
 // FieldView Tests
 // ============================================================================
 
-TEST_CASE("FieldView basic operations", "[parser][field_view]") {
+TEST_CASE("FieldView basic operations", "[parser][field_view][regression]") {
     SECTION("Construction") {
         const char* data = "12345";
         FieldView field{44, std::span<const char>{data, 5}};
@@ -114,7 +114,7 @@ TEST_CASE("FieldView basic operations", "[parser][field_view]") {
 // FieldIterator Tests
 // ============================================================================
 
-TEST_CASE("FieldIterator", "[parser][field_view]") {
+TEST_CASE("FieldIterator", "[parser][field_view][regression]") {
     const std::string msg = "8=FIX.4.4\x01" "35=A\x01" "49=SENDER\x01";
 
     SECTION("Iterate all fields") {
@@ -141,7 +141,7 @@ TEST_CASE("FieldIterator", "[parser][field_view]") {
 // FieldTable Tests
 // ============================================================================
 
-TEST_CASE("FieldTable O(1) lookup", "[parser][field_view]") {
+TEST_CASE("FieldTable O(1) lookup", "[parser][field_view][regression]") {
     FieldTable<512> table;
 
     const char* val1 = "AAPL";
@@ -170,7 +170,7 @@ TEST_CASE("FieldTable O(1) lookup", "[parser][field_view]") {
 // SIMD Scanner Tests
 // ============================================================================
 
-TEST_CASE("SIMD SOH scanning", "[parser][simd]") {
+TEST_CASE("SIMD SOH scanning", "[parser][simd][regression]") {
     SECTION("Scalar scanner") {
         const std::string data = "8=FIX.4.4\x01" "35=A\x01" "10=000\x01";
         auto positions = simd::scan_soh_scalar(
@@ -210,7 +210,7 @@ TEST_CASE("SIMD SOH scanning", "[parser][simd]") {
 // Consteval Parser Tests
 // ============================================================================
 
-TEST_CASE("Header parsing", "[parser][consteval]") {
+TEST_CASE("Header parsing", "[parser][consteval][regression]") {
     SECTION("Valid header") {
         auto result = parse_header(
             std::span<const char>{EXEC_REPORT.data(), EXEC_REPORT.size()});
@@ -248,7 +248,7 @@ TEST_CASE("Header parsing", "[parser][consteval]") {
 // Runtime Parser Tests
 // ============================================================================
 
-TEST_CASE("ParsedMessage", "[parser][runtime]") {
+TEST_CASE("ParsedMessage", "[parser][runtime][regression]") {
     SECTION("Parse execution report") {
         auto result = ParsedMessage::parse(
             std::span<const char>{EXEC_REPORT.data(), EXEC_REPORT.size()});
@@ -283,7 +283,7 @@ TEST_CASE("ParsedMessage", "[parser][runtime]") {
     }
 }
 
-TEST_CASE("IndexedParser O(1) lookup", "[parser][runtime]") {
+TEST_CASE("IndexedParser O(1) lookup", "[parser][runtime][regression]") {
     auto result = IndexedParser::parse(
         std::span<const char>{EXEC_REPORT.data(), EXEC_REPORT.size()});
 
@@ -311,7 +311,7 @@ TEST_CASE("IndexedParser O(1) lookup", "[parser][runtime]") {
 // Message Type Detection
 // ============================================================================
 
-TEST_CASE("Message type detection", "[parser]") {
+TEST_CASE("Message type detection", "[parser][regression]") {
     SECTION("Admin messages") {
         REQUIRE(msg_type::is_admin('0'));  // Heartbeat
         REQUIRE(msg_type::is_admin('A'));  // Logon
@@ -342,7 +342,7 @@ TEST_CASE("Message type detection", "[parser]") {
 // FIX Protocol Utilities
 // ============================================================================
 
-TEST_CASE("FIX checksum", "[parser][fix]") {
+TEST_CASE("FIX checksum", "[parser][fix][regression]") {
     SECTION("Calculate checksum") {
         // Simple test data
         const std::string data = "8=FIX.4.4\x01" "9=5\x01" "35=0\x01";
@@ -370,7 +370,7 @@ TEST_CASE("FIX checksum", "[parser][fix]") {
 // Stream Parser Tests
 // ============================================================================
 
-TEST_CASE("StreamParser message framing", "[parser][stream]") {
+TEST_CASE("StreamParser message framing", "[parser][stream][regression]") {
     StreamParser parser;
 
     SECTION("Single complete message") {
@@ -390,7 +390,7 @@ TEST_CASE("StreamParser message framing", "[parser][stream]") {
 // Message Boundary Detection
 // ============================================================================
 
-TEST_CASE("Message boundary detection", "[parser][simd]") {
+TEST_CASE("Message boundary detection", "[parser][simd][regression]") {
     SECTION("Find complete message") {
         auto boundary = simd::find_message_boundary(
             std::span<const char>{EXEC_REPORT.data(), EXEC_REPORT.size()});
@@ -405,7 +405,7 @@ TEST_CASE("Message boundary detection", "[parser][simd]") {
 // Structural Index Tests (TICKET_208 simdjson-style)
 // ============================================================================
 
-TEST_CASE("FIXStructuralIndex scalar", "[parser][simd][structural]") {
+TEST_CASE("FIXStructuralIndex scalar", "[parser][simd][structural][regression]") {
     SECTION("Build index from execution report") {
         auto idx = simd::build_index_scalar(
             std::span<const char>{EXEC_REPORT.data(), EXEC_REPORT.size()});
@@ -455,7 +455,7 @@ TEST_CASE("FIXStructuralIndex scalar", "[parser][simd][structural]") {
     }
 }
 
-TEST_CASE("FIXStructuralIndex runtime dispatch", "[parser][simd][structural]") {
+TEST_CASE("FIXStructuralIndex runtime dispatch", "[parser][simd][structural][regression]") {
     // Initialize runtime dispatch
     simd::init_simd_dispatch();
 
@@ -477,7 +477,7 @@ TEST_CASE("FIXStructuralIndex runtime dispatch", "[parser][simd][structural]") {
     }
 }
 
-TEST_CASE("IndexedFieldAccessor", "[parser][simd][structural]") {
+TEST_CASE("IndexedFieldAccessor", "[parser][simd][structural][regression]") {
     auto idx = simd::build_index(
         std::span<const char>{EXEC_REPORT.data(), EXEC_REPORT.size()});
 
@@ -512,7 +512,7 @@ TEST_CASE("IndexedFieldAccessor", "[parser][simd][structural]") {
     }
 }
 
-TEST_CASE("PaddedMessageBuffer", "[parser][simd][structural]") {
+TEST_CASE("PaddedMessageBuffer", "[parser][simd][structural][regression]") {
     SECTION("Construction and set") {
         simd::MediumPaddedBuffer buffer;
 

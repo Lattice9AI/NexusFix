@@ -4,6 +4,7 @@
 
 #include <chrono>
 #include <cstdint>
+#include <cstring>
 #include <iostream>
 #include <iomanip>
 #include <vector>
@@ -122,6 +123,11 @@ BenchmarkStats calculate_stats(std::vector<double>& latencies) {
     return stats;
 }
 
+struct NamedStats {
+    const char* name;
+    BenchmarkStats stats;
+};
+
 void print_stats(const char* name, const BenchmarkStats& stats) {
     std::cout << "\n=== " << name << " ===\n";
     std::cout << std::fixed << std::setprecision(2);
@@ -134,6 +140,27 @@ void print_stats(const char* name, const BenchmarkStats& stats) {
     std::cout << "  P99.9:  " << std::setw(10) << stats.p999_ns << " ns\n";
     std::cout << "  Max:    " << std::setw(10) << stats.max_ns << " ns\n";
     std::cout << "  StdDev: " << std::setw(10) << stats.stddev_ns << " ns\n";
+}
+
+void print_stats_json(const std::vector<NamedStats>& all_stats) {
+    std::cout << std::fixed << std::setprecision(2);
+    std::cout << "{\n  \"benchmarks\": [\n";
+    for (size_t i = 0; i < all_stats.size(); ++i) {
+        const auto& ns = all_stats[i];
+        std::cout << "    { \"name\": \"" << ns.name
+                  << "\", \"p50_ns\": " << ns.stats.p50_ns
+                  << ", \"p99_ns\": " << ns.stats.p99_ns
+                  << ", \"p999_ns\": " << ns.stats.p999_ns
+                  << ", \"mean_ns\": " << ns.stats.mean_ns
+                  << ", \"min_ns\": " << ns.stats.min_ns
+                  << ", \"max_ns\": " << ns.stats.max_ns
+                  << ", \"stddev_ns\": " << ns.stats.stddev_ns
+                  << ", \"iterations\": " << ns.stats.iterations
+                  << " }";
+        if (i + 1 < all_stats.size()) std::cout << ",";
+        std::cout << "\n";
+    }
+    std::cout << "  ]\n}\n";
 }
 
 // ============================================================================
@@ -292,7 +319,7 @@ constexpr std::string_view FIX50_NEW_ORDER_BODY =
 // ============================================================================
 
 /// Benchmark: Full message parsing with IndexedParser
-void benchmark_indexed_parser(size_t iterations, double freq_ghz) {
+NamedStats benchmark_indexed_parser(size_t iterations, double freq_ghz) {
     std::vector<double> latencies;
     latencies.reserve(iterations);
 
@@ -318,12 +345,11 @@ void benchmark_indexed_parser(size_t iterations, double freq_ghz) {
         }
     }
 
-    auto stats = calculate_stats(latencies);
-    print_stats("IndexedParser (ExecutionReport)", stats);
+    return {"IndexedParser (ExecutionReport)", calculate_stats(latencies)};
 }
 
 /// Benchmark: Field access after parsing
-void benchmark_field_access(size_t iterations, double freq_ghz) {
+NamedStats benchmark_field_access(size_t iterations, double freq_ghz) {
     std::vector<double> latencies;
     latencies.reserve(iterations);
 
@@ -333,7 +359,7 @@ void benchmark_field_access(size_t iterations, double freq_ghz) {
     auto result = IndexedParser::parse(data);
     if (!result) {
         std::cerr << "Error: Initial parse failed\n";
-        return;
+        return {"Field Access (4 fields)", {}};
     }
 
     const auto& parsed = *result;
@@ -363,12 +389,11 @@ void benchmark_field_access(size_t iterations, double freq_ghz) {
         }
     }
 
-    auto stats = calculate_stats(latencies);
-    print_stats("Field Access (4 fields)", stats);
+    return {"Field Access (4 fields)", calculate_stats(latencies)};
 }
 
 /// Benchmark: Message boundary detection
-void benchmark_message_boundary(size_t iterations, double freq_ghz) {
+NamedStats benchmark_message_boundary(size_t iterations, double freq_ghz) {
     std::vector<double> latencies;
     latencies.reserve(iterations);
 
@@ -401,12 +426,11 @@ void benchmark_message_boundary(size_t iterations, double freq_ghz) {
         }
     }
 
-    auto stats = calculate_stats(latencies);
-    print_stats("Message Boundary Detection", stats);
+    return {"Message Boundary Detection", calculate_stats(latencies)};
 }
 
 /// Benchmark: Heartbeat message parsing (smallest message)
-void benchmark_heartbeat_parse(size_t iterations, double freq_ghz) {
+NamedStats benchmark_heartbeat_parse(size_t iterations, double freq_ghz) {
     std::vector<double> latencies;
     latencies.reserve(iterations);
 
@@ -432,12 +456,11 @@ void benchmark_heartbeat_parse(size_t iterations, double freq_ghz) {
         }
     }
 
-    auto stats = calculate_stats(latencies);
-    print_stats("Heartbeat Parse", stats);
+    return {"Heartbeat Parse", calculate_stats(latencies)};
 }
 
 /// Benchmark: NewOrderSingle parsing
-void benchmark_new_order_parse(size_t iterations, double freq_ghz) {
+NamedStats benchmark_new_order_parse(size_t iterations, double freq_ghz) {
     std::vector<double> latencies;
     latencies.reserve(iterations);
 
@@ -463,12 +486,11 @@ void benchmark_new_order_parse(size_t iterations, double freq_ghz) {
         }
     }
 
-    auto stats = calculate_stats(latencies);
-    print_stats("NewOrderSingle Parse", stats);
+    return {"NewOrderSingle Parse", calculate_stats(latencies)};
 }
 
 /// Benchmark: Checksum calculation
-void benchmark_checksum(size_t iterations, double freq_ghz) {
+NamedStats benchmark_checksum(size_t iterations, double freq_ghz) {
     std::vector<double> latencies;
     latencies.reserve(iterations);
 
@@ -492,12 +514,11 @@ void benchmark_checksum(size_t iterations, double freq_ghz) {
         (void)checksum;
     }
 
-    auto stats = calculate_stats(latencies);
-    print_stats("Checksum Calculation", stats);
+    return {"Checksum Calculation", calculate_stats(latencies)};
 }
 
 /// Benchmark: Integer parsing (common operation)
-void benchmark_int_parsing(size_t iterations, double freq_ghz) {
+NamedStats benchmark_int_parsing(size_t iterations, double freq_ghz) {
     std::vector<double> latencies;
     latencies.reserve(iterations);
 
@@ -525,12 +546,11 @@ void benchmark_int_parsing(size_t iterations, double freq_ghz) {
         }
     }
 
-    auto stats = calculate_stats(latencies);
-    print_stats("Integer Parsing", stats);
+    return {"Integer Parsing", calculate_stats(latencies)};
 }
 
 /// Benchmark: FixedPrice parsing
-void benchmark_price_parsing(size_t iterations, double freq_ghz) {
+NamedStats benchmark_price_parsing(size_t iterations, double freq_ghz) {
     std::vector<double> latencies;
     latencies.reserve(iterations);
 
@@ -555,8 +575,7 @@ void benchmark_price_parsing(size_t iterations, double freq_ghz) {
         (void)price;
     }
 
-    auto stats = calculate_stats(latencies);
-    print_stats("FixedPrice Parsing", stats);
+    return {"FixedPrice Parsing", calculate_stats(latencies)};
 }
 
 // ============================================================================
@@ -564,7 +583,7 @@ void benchmark_price_parsing(size_t iterations, double freq_ghz) {
 // ============================================================================
 
 /// Benchmark: FIXT 1.1 Logon parsing
-void benchmark_fixt11_logon_parse(size_t iterations, double freq_ghz) {
+NamedStats benchmark_fixt11_logon_parse(size_t iterations, double freq_ghz) {
     std::vector<double> latencies;
     latencies.reserve(iterations);
 
@@ -590,12 +609,11 @@ void benchmark_fixt11_logon_parse(size_t iterations, double freq_ghz) {
         }
     }
 
-    auto stats = calculate_stats(latencies);
-    print_stats("FIXT 1.1 Logon Parse", stats);
+    return {"FIXT 1.1 Logon Parse", calculate_stats(latencies)};
 }
 
 /// Benchmark: FIXT 1.1 Heartbeat parsing
-void benchmark_fixt11_heartbeat_parse(size_t iterations, double freq_ghz) {
+NamedStats benchmark_fixt11_heartbeat_parse(size_t iterations, double freq_ghz) {
     std::vector<double> latencies;
     latencies.reserve(iterations);
 
@@ -621,12 +639,11 @@ void benchmark_fixt11_heartbeat_parse(size_t iterations, double freq_ghz) {
         }
     }
 
-    auto stats = calculate_stats(latencies);
-    print_stats("FIXT 1.1 Heartbeat Parse", stats);
+    return {"FIXT 1.1 Heartbeat Parse", calculate_stats(latencies)};
 }
 
 /// Benchmark: FIX 5.0 ExecutionReport parsing
-void benchmark_fix50_exec_report_parse(size_t iterations, double freq_ghz) {
+NamedStats benchmark_fix50_exec_report_parse(size_t iterations, double freq_ghz) {
     std::vector<double> latencies;
     latencies.reserve(iterations);
 
@@ -652,12 +669,11 @@ void benchmark_fix50_exec_report_parse(size_t iterations, double freq_ghz) {
         }
     }
 
-    auto stats = calculate_stats(latencies);
-    print_stats("FIX 5.0 ExecutionReport Parse", stats);
+    return {"FIX 5.0 ExecutionReport Parse", calculate_stats(latencies)};
 }
 
 /// Benchmark: FIX 5.0 NewOrderSingle parsing
-void benchmark_fix50_new_order_parse(size_t iterations, double freq_ghz) {
+NamedStats benchmark_fix50_new_order_parse(size_t iterations, double freq_ghz) {
     std::vector<double> latencies;
     latencies.reserve(iterations);
 
@@ -683,12 +699,11 @@ void benchmark_fix50_new_order_parse(size_t iterations, double freq_ghz) {
         }
     }
 
-    auto stats = calculate_stats(latencies);
-    print_stats("FIX 5.0 NewOrderSingle Parse", stats);
+    return {"FIX 5.0 NewOrderSingle Parse", calculate_stats(latencies)};
 }
 
 /// Benchmark: Version detection performance
-void benchmark_version_detection(size_t iterations, double freq_ghz) {
+NamedStats benchmark_version_detection(size_t iterations, double freq_ghz) {
     std::vector<double> latencies;
     latencies.reserve(iterations);
 
@@ -700,7 +715,7 @@ void benchmark_version_detection(size_t iterations, double freq_ghz) {
 
     if (!fix44_parsed || !fixt11_parsed) {
         std::cerr << "Error: Failed to parse messages for version detection benchmark\n";
-        return;
+        return {"Version Detection (3 checks)", {}};
     }
 
     // Warmup
@@ -725,12 +740,12 @@ void benchmark_version_detection(size_t iterations, double freq_ghz) {
         }
     }
 
-    auto stats = calculate_stats(latencies);
-    print_stats("Version Detection (3 checks)", stats);
+    return {"Version Detection (3 checks)", calculate_stats(latencies)};
 }
 
 /// Benchmark: FIX 4.4 vs FIX 5.0 comparison
-void benchmark_fix44_vs_fix50_comparison(size_t iterations, double freq_ghz) {
+void benchmark_fix44_vs_fix50_comparison(size_t iterations, double freq_ghz,
+                                         bool json_mode, std::vector<NamedStats>& results) {
     std::string fix44_msg = build_fix_message(EXEC_REPORT_BODY);
     std::string fix50_msg = build_fix_message(FIX50_EXEC_REPORT_BODY);
 
@@ -774,18 +789,23 @@ void benchmark_fix44_vs_fix50_comparison(size_t iterations, double freq_ghz) {
     auto fix44_stats = calculate_stats(fix44_latencies);
     auto fix50_stats = calculate_stats(fix50_latencies);
 
-    std::cout << "\n=== FIX 4.4 vs FIX 5.0 ExecutionReport Comparison ===\n";
-    std::cout << std::fixed << std::setprecision(2);
-    std::cout << "                 FIX 4.4      FIX 5.0      Diff\n";
-    std::cout << "  Mean:     " << std::setw(10) << fix44_stats.mean_ns << " ns  "
-              << std::setw(10) << fix50_stats.mean_ns << " ns  "
-              << std::setw(+6) << (fix50_stats.mean_ns - fix44_stats.mean_ns) << " ns\n";
-    std::cout << "  P50:      " << std::setw(10) << fix44_stats.p50_ns << " ns  "
-              << std::setw(10) << fix50_stats.p50_ns << " ns  "
-              << std::setw(+6) << (fix50_stats.p50_ns - fix44_stats.p50_ns) << " ns\n";
-    std::cout << "  P99:      " << std::setw(10) << fix44_stats.p99_ns << " ns  "
-              << std::setw(10) << fix50_stats.p99_ns << " ns  "
-              << std::setw(+6) << (fix50_stats.p99_ns - fix44_stats.p99_ns) << " ns\n";
+    results.push_back({"FIX 4.4 vs 5.0 (4.4 side)", fix44_stats});
+    results.push_back({"FIX 4.4 vs 5.0 (5.0 side)", fix50_stats});
+
+    if (!json_mode) {
+        std::cout << "\n=== FIX 4.4 vs FIX 5.0 ExecutionReport Comparison ===\n";
+        std::cout << std::fixed << std::setprecision(2);
+        std::cout << "                 FIX 4.4      FIX 5.0      Diff\n";
+        std::cout << "  Mean:     " << std::setw(10) << fix44_stats.mean_ns << " ns  "
+                  << std::setw(10) << fix50_stats.mean_ns << " ns  "
+                  << std::setw(+6) << (fix50_stats.mean_ns - fix44_stats.mean_ns) << " ns\n";
+        std::cout << "  P50:      " << std::setw(10) << fix44_stats.p50_ns << " ns  "
+                  << std::setw(10) << fix50_stats.p50_ns << " ns  "
+                  << std::setw(+6) << (fix50_stats.p50_ns - fix44_stats.p50_ns) << " ns\n";
+        std::cout << "  P99:      " << std::setw(10) << fix44_stats.p99_ns << " ns  "
+                  << std::setw(10) << fix50_stats.p99_ns << " ns  "
+                  << std::setw(+6) << (fix50_stats.p99_ns - fix44_stats.p99_ns) << " ns\n";
+    }
 }
 
 } // namespace nfx::bench
@@ -798,49 +818,71 @@ int main(int argc, char* argv[]) {
     using namespace nfx::bench;
 
     size_t iterations = 100000;
+    bool json_mode = false;
 
-    if (argc > 1) {
-        iterations = std::stoul(argv[1]);
+    for (int i = 1; i < argc; ++i) {
+        if (std::strcmp(argv[i], "--json") == 0) {
+            json_mode = true;
+        } else {
+            iterations = std::stoul(argv[i]);
+        }
     }
 
-    std::cout << "NexusFIX Parse Benchmark\n";
-    std::cout << "========================\n";
-    std::cout << "Iterations: " << iterations << "\n";
-
-    // Calibrate CPU frequency
-    std::cout << "\nCalibrating CPU frequency...\n";
+    // Calibrate CPU frequency (always to stderr so it doesn't pollute JSON)
+    std::cerr << "Calibrating CPU frequency...\n";
     double freq_ghz = get_cpu_freq_ghz();
-    std::cout << "CPU frequency: " << std::fixed << std::setprecision(3)
+    std::cerr << "CPU frequency: " << std::fixed << std::setprecision(3)
               << freq_ghz << " GHz\n";
 
-    // Run FIX 4.4 benchmarks
-    std::cout << "\n--- FIX 4.4 Benchmarks ---\n";
-    benchmark_indexed_parser(iterations, freq_ghz);
-    benchmark_field_access(iterations, freq_ghz);
-    benchmark_message_boundary(iterations, freq_ghz);
-    benchmark_heartbeat_parse(iterations, freq_ghz);
-    benchmark_new_order_parse(iterations, freq_ghz);
-    benchmark_checksum(iterations, freq_ghz);
-    benchmark_int_parsing(iterations, freq_ghz);
-    benchmark_price_parsing(iterations, freq_ghz);
+    std::vector<NamedStats> results;
+    results.reserve(16);
 
-    // Run FIXT 1.1 / FIX 5.0 benchmarks
-    std::cout << "\n--- FIXT 1.1 / FIX 5.0 Benchmarks ---\n";
-    benchmark_fixt11_logon_parse(iterations, freq_ghz);
-    benchmark_fixt11_heartbeat_parse(iterations, freq_ghz);
-    benchmark_fix50_exec_report_parse(iterations, freq_ghz);
-    benchmark_fix50_new_order_parse(iterations, freq_ghz);
-    benchmark_version_detection(iterations, freq_ghz);
+    auto run = [&](auto benchmark_fn) {
+        auto ns = benchmark_fn(iterations, freq_ghz);
+        if (!json_mode) {
+            print_stats(ns.name, ns.stats);
+        }
+        results.push_back(ns);
+    };
 
-    // Run comparison benchmark
-    benchmark_fix44_vs_fix50_comparison(iterations, freq_ghz);
+    if (!json_mode) {
+        std::cout << "NexusFIX Parse Benchmark\n";
+        std::cout << "========================\n";
+        std::cout << "Iterations: " << iterations << "\n";
+        std::cout << "\n--- FIX 4.4 Benchmarks ---\n";
+    }
 
-    std::cout << "\n";
-    std::cout << "========================================\n";
-    std::cout << "Target: ExecutionReport parse < 200 ns\n";
-    std::cout << "  FIX 4.4 and FIX 5.0 should have\n";
-    std::cout << "  similar performance (no regression)\n";
-    std::cout << "========================================\n";
+    run(benchmark_indexed_parser);
+    run(benchmark_field_access);
+    run(benchmark_message_boundary);
+    run(benchmark_heartbeat_parse);
+    run(benchmark_new_order_parse);
+    run(benchmark_checksum);
+    run(benchmark_int_parsing);
+    run(benchmark_price_parsing);
+
+    if (!json_mode) {
+        std::cout << "\n--- FIXT 1.1 / FIX 5.0 Benchmarks ---\n";
+    }
+
+    run(benchmark_fixt11_logon_parse);
+    run(benchmark_fixt11_heartbeat_parse);
+    run(benchmark_fix50_exec_report_parse);
+    run(benchmark_fix50_new_order_parse);
+    run(benchmark_version_detection);
+
+    benchmark_fix44_vs_fix50_comparison(iterations, freq_ghz, json_mode, results);
+
+    if (json_mode) {
+        print_stats_json(results);
+    } else {
+        std::cout << "\n";
+        std::cout << "========================================\n";
+        std::cout << "Target: ExecutionReport parse < 200 ns\n";
+        std::cout << "  FIX 4.4 and FIX 5.0 should have\n";
+        std::cout << "  similar performance (no regression)\n";
+        std::cout << "========================================\n";
+    }
 
     return 0;
 }

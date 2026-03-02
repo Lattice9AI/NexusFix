@@ -1,0 +1,11 @@
+{
+  "version": 1,
+  "description": "NexusFIX performance baselines - TICKET_228 Phase 3. Thresholds set for CI environments (VMs). Bare metal target is <200ns P50.",
+  "baselines": [
+    { "name": "IndexedParser (ExecutionReport)", "p50_max_ns": 500, "p99_max_ns": 2000 },
+    { "name": "Heartbeat Parse", "p50_max_ns": 400, "p99_max_ns": 1500 },
+    { "name": "NewOrderSingle Parse", "p50_max_ns": 500, "p99_max_ns": 2000 },
+    { "name": "FIX 5.0 ExecutionReport Parse", "p50_max_ns": 500, "p99_max_ns": 2000 },
+    { "name": "FIX 5.0 NewOrderSingle Parse", "p50_max_ns": 500, "p99_max_ns": 2000 }
+  ]
+}

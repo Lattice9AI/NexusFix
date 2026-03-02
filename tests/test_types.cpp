@@ -13,7 +13,7 @@ using namespace nfx::literals;
 // Tag Tests
 // ============================================================================
 
-TEST_CASE("Tag compile-time values", "[types][tag]") {
+TEST_CASE("Tag compile-time values", "[types][tag][regression]") {
     SECTION("Standard header tags") {
         static_assert(tag::BeginString::value == 8);
         static_assert(tag::BodyLength::value == 9);
@@ -48,7 +48,7 @@ TEST_CASE("Tag compile-time values", "[types][tag]") {
 // FixedPrice Tests
 // ============================================================================
 
-TEST_CASE("FixedPrice arithmetic", "[types][price]") {
+TEST_CASE("FixedPrice arithmetic", "[types][price][regression]") {
     SECTION("Construction and conversion") {
         auto price = FixedPrice::from_double(100.50);
         REQUIRE_THAT(price.to_double(), Catch::Matchers::WithinRel(100.50, 0.0001));
@@ -100,7 +100,7 @@ TEST_CASE("FixedPrice arithmetic", "[types][price]") {
 // Qty Tests
 // ============================================================================
 
-TEST_CASE("Qty operations", "[types][qty]") {
+TEST_CASE("Qty operations", "[types][qty][regression]") {
     SECTION("Construction") {
         auto q1 = Qty::from_int(100);
         REQUIRE(q1.whole() == 100);
@@ -130,7 +130,7 @@ TEST_CASE("Qty operations", "[types][qty]") {
 // SeqNum Tests
 // ============================================================================
 
-TEST_CASE("SeqNum operations", "[types][seqnum]") {
+TEST_CASE("SeqNum operations", "[types][seqnum][regression]") {
     SECTION("Construction and validation") {
         auto seq = 1_seq;
         REQUIRE(seq.get() == 1);
@@ -157,7 +157,7 @@ TEST_CASE("SeqNum operations", "[types][seqnum]") {
 // Enum Tests
 // ============================================================================
 
-TEST_CASE("Side enum", "[types][enums]") {
+TEST_CASE("Side enum", "[types][enums][regression]") {
     using nfx::Side;  // Disambiguate from nfx::tag::Side
     REQUIRE(is_buy_side(Side::Buy));
     REQUIRE(is_buy_side(Side::BuyMinus));
@@ -168,7 +168,7 @@ TEST_CASE("Side enum", "[types][enums]") {
     REQUIRE(!is_sell_side(Side::Buy));
 }
 
-TEST_CASE("OrdStatus enum", "[types][enums]") {
+TEST_CASE("OrdStatus enum", "[types][enums][regression]") {
     using nfx::OrdStatus;  // Disambiguate from nfx::tag::OrdStatus
     REQUIRE(is_terminal_status(OrdStatus::Filled));
     REQUIRE(is_terminal_status(OrdStatus::Canceled));
@@ -181,7 +181,7 @@ TEST_CASE("OrdStatus enum", "[types][enums]") {
 // Error Tests
 // ============================================================================
 
-TEST_CASE("ParseError", "[types][error]") {
+TEST_CASE("ParseError", "[types][error][regression]") {
     SECTION("Default construction") {
         ParseError err;
         REQUIRE(err.ok());
@@ -202,7 +202,7 @@ TEST_CASE("ParseError", "[types][error]") {
     }
 }
 
-TEST_CASE("std::expected usage", "[types][error]") {
+TEST_CASE("std::expected usage", "[types][error][regression]") {
     SECTION("Success result") {
         ParseResult<int> result{42};
         REQUIRE(result.has_value());
@@ -221,7 +221,7 @@ TEST_CASE("std::expected usage", "[types][error]") {
 // Timestamp Tests
 // ============================================================================
 
-TEST_CASE("Timestamp operations", "[types][timestamp]") {
+TEST_CASE("Timestamp operations", "[types][timestamp][regression]") {
     Timestamp ts{1000000000LL};  // 1 second in nanos
 
     REQUIRE(ts.as_nanos() == 1000000000LL);
