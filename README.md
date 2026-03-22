@@ -16,6 +16,7 @@
   <img src="https://img.shields.io/badge/Platform-Linux%20|%20macOS%20|%20Windows-lightgrey.svg" alt="Cross-Platform">
   <img src="https://img.shields.io/badge/Speed-3x%20QuickFIX-orange.svg" alt="3x Faster">
   <img src="https://img.shields.io/badge/Allocations-Zero%20on%20Hot%20Path-brightgreen.svg" alt="Zero Allocation">
+  <a href="https://github.com/wilsonfreitas/awesome-quant"><img src="https://awesome.re/mentioned-badge.svg" alt="Mentioned in Awesome"></a>
 </p>
 
 <p align="center">
