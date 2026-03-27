@@ -24,15 +24,16 @@ How we achieved **3x performance improvement** over QuickFIX: from 730ns to 246n
 QuickFIX copies every field value into `std::string`:
 
 ```cpp
-// QuickFIX approach - allocates memory for each field
-std::string orderID = message.getField(37);  // heap allocation
-std::string symbol = message.getField(55);   // heap allocation
+// QuickFIX approach - constructs std::string for each field
+std::string orderID = message.getField(37);  // string construction + memcpy
+std::string symbol = message.getField(55);   // string construction + memcpy
 ```
 
 Each `getField()` call triggers:
-- Heap allocation (~50-100ns)
-- Memory copy
-- Potential cache miss
+- `std::string` construction with `memcpy` into internal buffer
+- Heap allocation for fields exceeding SSO capacity (typically >15 bytes on libstdc++/MSVC, >22 bytes on libc++)
+- Non-deterministic latency: short fields (e.g. "AAPL") hit SSO, longer fields (e.g. UUIDs, FreeText) allocate on heap - this variance is problematic for HFT
+- Destructor overhead for each `std::string` object
 
 ### Solution
 

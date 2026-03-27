@@ -50,9 +50,9 @@ Tested on Linux with GCC 13.3, 100,000 iterations:
 |--------|----------|----------|-------------|
 | **ExecutionReport Parse** | 730 ns | 246 ns | **3.0x faster** |
 | **NewOrderSingle Parse** | 661 ns | 229 ns | **2.9x faster** |
-| **Field Access (4 fields)** | 31 ns | 11 ns | **2.9x faster** |
-| **Throughput** | 1.19M msg/sec | 4.17M msg/sec | **3.5x higher** |
-| **P99 Latency** | 784 ns | 258 ns | **3.0x lower** |
+| **Field Lookup** (O(1) post-parse, 4 fields) | 31 ns | 11 ns | **2.9x faster** |
+| **Parse Throughput** | 1.19M msg/sec | 4.17M msg/sec | **3.5x higher** |
+| **P99 Parse Latency** | 784 ns | 258 ns | **3.0x lower** |
 
 ### Why is NexusFIX Faster?
 
@@ -67,7 +67,7 @@ Tested on Linux with GCC 13.3, 100,000 iterations:
 
 ### Zero Allocation Proof
 
-Processing a **NewOrderSingle** message on the hot path:
+Parsing a **NewOrderSingle** message on the hot path:
 
 | Operation | QuickFIX | NexusFIX |
 |-----------|----------|----------|
@@ -144,10 +144,12 @@ NexusFIX is MIT licensed. We gratefully acknowledge these open source projects:
 ### Core Capabilities
 
 - **Zero-Copy Parsing** - `std::span<const char>` views into original buffer, no `memcpy`
+- **Message Encoding** - Builder pattern with `constexpr` serializer for constructing FIX messages
 - **SIMD Acceleration** - AVX2/AVX-512 instructions for delimiter scanning
 - **Compile-Time Optimization** - `consteval` field offsets, 22 lookup tables for enum/type conversion, ~300 runtime branches eliminated
-- **O(1) Field Access** - Pre-indexed lookup table by FIX tag number
+- **O(1) Field Lookup** - Pre-indexed lookup table by FIX tag number (post-parse)
 - **Zero Heap Allocation** - PMR pools and stack allocation on hot path
+- **Session Management** - Full session lifecycle: Logon, Logout, Heartbeat, sequence number tracking, reconnect logic
 - **Type-Safe API** - Strong types for Price, Quantity, Side, OrdType
 
 ### Modern C++23
@@ -412,7 +414,9 @@ For technical deep-dives on our optimization journey, see [Optimization Diary](d
 This project is maintained by **SilverstreamsAI**.
 
 - **Issues & Discussions**: Welcome for bug reports, performance questions, and feature discussions
-- **Pull Requests**: Bug fixes only (see [CONTRIBUTING.md](CONTRIBUTING.md))
+- **Pull Requests**: Bug fixes and performance optimizations welcome (see [CONTRIBUTING.md](CONTRIBUTING.md))
+- Feature PRs require prior discussion in Issues
+- Performance PRs must include benchmark data (before/after)
 
 All contributions must follow:
 - C++23 standards
