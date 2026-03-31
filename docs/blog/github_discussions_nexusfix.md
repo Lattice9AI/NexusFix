@@ -222,7 +222,7 @@ NexusFIX uses PMR pools (`std::pmr::monotonic_buffer_resource`) for any allocati
 Reproduce:
 
 ```bash
-git clone https://github.com/SilverstreamsAI/NexusFIX.git
+git clone https://github.com/Lattice9AI/NexusFIX.git
 cd NexusFIX && ./start.sh build
 ./start.sh bench 100000      # NexusFIX benchmark
 ./start.sh compare 100000    # vs QuickFIX comparison
@@ -248,4 +248,4 @@ cd NexusFIX && ./start.sh build
 
 MIT licensed. Questions and contributions welcome.
 
-GitHub: [github.com/SilverstreamsAI/NexusFIX](https://github.com/SilverstreamsAI/NexusFIX)
+GitHub: [github.com/Lattice9AI/NexusFIX](https://github.com/Lattice9AI/NexusFIX)

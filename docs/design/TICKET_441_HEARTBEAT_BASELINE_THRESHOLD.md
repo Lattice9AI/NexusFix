@@ -1,6 +1,6 @@
 # TICKET_441: Adjust Heartbeat Parse Baseline Threshold for CI
 
-**Status**: Open
+**Status**: Closed
 **Priority**: High (blocks CI)
 **Category**: Testing / Performance Gates
 **Parent**: TICKET_228 (Regression Test Strategy)
@@ -55,4 +55,4 @@ This gives ~10% headroom (matching the ratio other benchmarks have), while still
 
 - TICKET_228: Regression Test Strategy (established baselines)
 - TICKET_440: Doc-only commit that exposed the threshold issue
-- CI #66: https://github.com/SilverstreamsAI/NexusFix/actions (failing run)
+- CI #66: https://github.com/Lattice9AI/NexusFix/actions (failing run)

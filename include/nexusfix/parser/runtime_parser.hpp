@@ -142,8 +142,14 @@ public:
         return field_count_;
     }
 
-    /// Get field by index
-    [[nodiscard]] constexpr FieldView field_at(size_t index) const noexcept {
+    /// Get field by index (returns reference for zero-copy)
+    [[nodiscard]] constexpr const FieldView& field_at(size_t index) const noexcept {
+        NFX_ASSUME(index < field_count_);
+        return fields_[index];
+    }
+
+    /// Get field by index (safe version with bounds check)
+    [[nodiscard]] constexpr FieldView field_at_safe(size_t index) const noexcept {
         return index < field_count_ ? fields_[index] : FieldView{};
     }
 

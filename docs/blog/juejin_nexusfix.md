@@ -8,7 +8,7 @@
 
 FIX 协议自 1992 年问世, 至今仍是全球电子交易的核心通信标准。无论是美股、港股还是国内的期货交易所对接, FIX 协议都无处不在。然而, 主流 FIX 引擎的解析方式几十年未变: 分配字符串、复制字节、遍历树结构。
 
-在高频交易中, 每一纳秒都是竞争优势。我们构建了 [NexusFIX](https://github.com/SilverstreamsAI/NexusFIX) 来解决这个问题。
+在高频交易中, 每一纳秒都是竞争优势。我们构建了 [NexusFIX](https://github.com/Lattice9AI/NexusFIX) 来解决这个问题。
 
 ## 传统 FIX 引擎的性能瓶颈
 
@@ -77,7 +77,7 @@ FIX 消息头结构固定, `consteval` 在编译期计算偏移量, 运行时零
 ## 快速上手
 
 ```bash
-git clone https://github.com/SilverstreamsAI/NexusFIX.git
+git clone https://github.com/Lattice9AI/NexusFIX.git
 cd NexusFIX && ./start.sh build
 ```
 
@@ -128,7 +128,7 @@ void on_execution(std::span<const char> data) {
 - MIT 开源协议
 - 支持 FIX 4.4 和 FIX 5.0
 
-GitHub: [github.com/SilverstreamsAI/NexusFIX](https://github.com/SilverstreamsAI/NexusFIX)
+GitHub: [github.com/Lattice9AI/NexusFIX](https://github.com/Lattice9AI/NexusFIX)
 
 ---
 

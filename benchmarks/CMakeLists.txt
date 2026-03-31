@@ -243,6 +243,15 @@ if(NFX_ENABLE_MIMALLOC)
     )
 endif()
 
+# SIMD timestamp parse benchmark (TICKET_443: scalar vs AVX2)
+add_executable(timestamp_parse_bench timestamp_parse_bench.cpp)
+target_link_libraries(timestamp_parse_bench PRIVATE nexusfix pthread)
+target_include_directories(timestamp_parse_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(timestamp_parse_bench PRIVATE -O3 -march=native)
+set_target_properties(timestamp_parse_bench PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/benchmarks
+)
+
 # SIMD scanner benchmark (scalar vs AVX2 vs AVX-512)
 add_executable(simd_scanner_bench simd_scanner_bench.cpp)
 target_link_libraries(simd_scanner_bench PRIVATE nexusfix pthread)
@@ -253,3 +262,31 @@ set_target_properties(simd_scanner_bench PROPERTIES
 
 # QuickFIX comparison benchmark (optional)
 add_subdirectory(vs_quickfix)
+
+# Simple parse test (debug performance)
+add_executable(simple_parse_test simple_parse_test.cpp)
+target_link_libraries(simple_parse_test PRIVATE nexusfix pthread)
+target_include_directories(simple_parse_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(simple_parse_test PRIVATE -O3 -march=native)
+set_target_properties(simple_parse_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/benchmarks
+)
+
+# Optimized parse test (TICKET_444: test scalar vs SIMD for '=' search)
+add_executable(optimized_parse_test optimized_parse_test.cpp)
+target_link_libraries(optimized_parse_test PRIVATE nexusfix pthread)
+target_include_directories(optimized_parse_test PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(optimized_parse_test PRIVATE -O3 -march=native)
+set_target_properties(optimized_parse_test PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/benchmarks
+)
+
+# Field loop only benchmark (TICKET_450: isolate field loop cost)
+add_executable(field_loop_only_bench field_loop_only_bench.cpp)
+target_link_libraries(field_loop_only_bench PRIVATE nexusfix pthread)
+target_include_directories(field_loop_only_bench PRIVATE ${CMAKE_CURRENT_SOURCE_DIR}/include)
+target_compile_options(field_loop_only_bench PRIVATE -O3 -march=native)
+set_target_properties(field_loop_only_bench PROPERTIES
+    RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/benchmarks
+)
+

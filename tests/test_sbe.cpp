@@ -1,5 +1,5 @@
 // SPDX-License-Identifier: MIT
-// Copyright (c) 2025 SilverstreamsAI
+// Copyright (c) 2025 Lattice9AI
 
 #include <catch2/catch_test_macros.hpp>
 

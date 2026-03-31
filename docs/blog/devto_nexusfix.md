@@ -75,7 +75,7 @@ Tested on Linux, GCC 13.3, 100K iterations.
 Header-only, C++23. Three commands:
 
 ```bash
-git clone https://github.com/SilverstreamsAI/NexusFIX.git
+git clone https://github.com/Lattice9AI/NexusFIX.git
 cd NexusFIX && ./start.sh build
 
 # Run benchmarks yourself
@@ -101,7 +101,7 @@ auto msg = NewOrderSingle::Builder{}
 
 MIT licensed. FIX 4.4 and 5.0 supported.
 
-GitHub: [github.com/SilverstreamsAI/NexusFIX](https://github.com/SilverstreamsAI/NexusFIX)
+GitHub: [github.com/Lattice9AI/NexusFIX](https://github.com/Lattice9AI/NexusFIX)
 
 ---
 

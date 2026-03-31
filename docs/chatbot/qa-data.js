@@ -38,8 +38,8 @@ const qaData = {
         },
         {
           "q": "Is this a solo project or a team effort?",
-          "a": "NexusFix is developed by SilverstreamsAI. The architectural decisions, implementation, and benchmark methodology reflect a focused engineering effort. The project benefits from the broader C++ community's work - simdjson's two-stage parsing insight, the LMAX Disruptor pattern, and the C++ standards committee's work on PMR, constexpr, and SIMD support.",
-          "a_short": "Developed by SilverstreamsAI, benefiting from the broader C++ community's work including simdjson, LMAX Disruptor, and C++ standards committee contributions.",
+          "a": "NexusFix is developed by Lattice9AI. The architectural decisions, implementation, and benchmark methodology reflect a focused engineering effort. The project benefits from the broader C++ community's work - simdjson's two-stage parsing insight, the LMAX Disruptor pattern, and the C++ standards committee's work on PMR, constexpr, and SIMD support.",
+          "a_short": "Developed by Lattice9AI, benefiting from the broader C++ community's work including simdjson, LMAX Disruptor, and C++ standards committee contributions.",
           "keywords": ["solo", "team", "who", "developer", "silverstreams"],
           "audio_short": "audio/general_q05_short.mp3",
           "audio_full": "audio/general_q05_full.mp3"
@@ -94,8 +94,8 @@ const qaData = {
         },
         {
           "q": "How do you fund ongoing development?",
-          "a": "NexusFix is developed by SilverstreamsAI as part of our infrastructure research. The open-source project serves dual purposes: advancing the state of modern C++ in trading infrastructure, and demonstrating engineering capability. The benchmark methodology and optimization techniques developed here feed back into our broader work.",
-          "a_short": "Developed by SilverstreamsAI as infrastructure research. The open-source project advances modern C++ in trading and demonstrates engineering capability.",
+          "a": "NexusFix is developed by Lattice9AI as part of our infrastructure research. The open-source project serves dual purposes: advancing the state of modern C++ in trading infrastructure, and demonstrating engineering capability. The benchmark methodology and optimization techniques developed here feed back into our broader work.",
+          "a_short": "Developed by Lattice9AI as infrastructure research. The open-source project advances modern C++ in trading and demonstrates engineering capability.",
           "keywords": ["fund", "money", "business", "sponsor", "commercial"],
           "audio_short": "audio/general_q12_short.mp3",
           "audio_full": "audio/general_q12_full.mp3"

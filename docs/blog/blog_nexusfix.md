@@ -8,7 +8,7 @@
 
 The FIX protocol has been the backbone of electronic trading since 1992. Over three decades later, most FIX engines still parse messages the same way: allocate strings, copy bytes, traverse tree structures. In a world where nanoseconds determine profitability, that approach is a liability.
 
-We built [NexusFIX](https://github.com/SilverstreamsAI/NexusFIX) to fix that.
+We built [NexusFIX](https://github.com/Lattice9AI/NexusFIX) to fix that.
 
 ## The Problem with Legacy FIX Engines
 
@@ -128,7 +128,7 @@ if (result) {
 Header-only library. C++23 compiler required (GCC 13+ or Clang 17+).
 
 ```bash
-git clone https://github.com/SilverstreamsAI/NexusFIX.git
+git clone https://github.com/Lattice9AI/NexusFIX.git
 cd NexusFIX && ./start.sh build
 ```
 
@@ -152,8 +152,8 @@ NexusFIX is MIT licensed and actively developed. The roadmap includes kernel byp
 
 If you're building low-latency trading infrastructure and QuickFIX is your bottleneck, give NexusFIX a look.
 
-GitHub: [github.com/SilverstreamsAI/NexusFIX](https://github.com/SilverstreamsAI/NexusFIX)
+GitHub: [github.com/Lattice9AI/NexusFIX](https://github.com/Lattice9AI/NexusFIX)
 
 ---
 
-*Built by [SilverstreamsAI](https://github.com/SilverstreamsAI). For questions or collaboration: contact@silverstream.tech*
+*Built by [Lattice9AI](https://github.com/Lattice9AI). For questions or collaboration: contact@silverstream.tech*
