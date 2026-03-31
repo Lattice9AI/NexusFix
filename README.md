@@ -9,7 +9,7 @@
 </p>
 
 <p align="center">
-  <a href="https://github.com/SilverstreamsAI/NexusFix/actions/workflows/ci.yml"><img src="https://github.com/SilverstreamsAI/NexusFix/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/Lattice9AI/NexusFix/actions/workflows/ci.yml"><img src="https://github.com/Lattice9AI/NexusFix/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/C%2B%2B-23-blue.svg" alt="C++23">
   <img src="https://img.shields.io/badge/Library-Header--Only-blue.svg" alt="Header-Only">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
@@ -195,7 +195,7 @@ How we achieved sub-300ns latency with Modern C++23:
 ### Installation
 
 ```bash
-git clone https://github.com/SilverstreamsAI/NexusFIX.git
+git clone https://github.com/Lattice9AI/NexusFIX.git
 cd NexusFIX
 ./start.sh build
 ```
@@ -286,7 +286,7 @@ cmake --build build -j
 
 Verify performance claims by running benchmarks yourself.
 
-### NexusFIX Benchmark
+### Quick Start
 
 ```bash
 # Run parser and session benchmarks
@@ -313,20 +313,15 @@ Compare NexusFIX against QuickFIX (requires QuickFIX installed):
 ./start.sh compare 100000
 ```
 
-### Benchmark Components
+### Full Reproduction Guide
 
-| Benchmark | File | What it measures |
-|-----------|------|------------------|
-| Parse | `parse_benchmark.cpp` | Message parsing latency |
-| Session | `session_benchmark.cpp` | Session state machine |
-| QuickFIX | `vs_quickfix/` | Side-by-side comparison |
+For detailed instructions on reproducing benchmark results, including:
+- Environment setup (CPU governor, pinning, priority)
+- Build configuration options
+- Interpreting results
+- Troubleshooting
 
-### Interpreting Results
-
-- **Mean**: Average latency (lower is better)
-- **P50**: Median latency (50th percentile)
-- **P99**: Tail latency (99th percentile) - critical for HFT
-- **Throughput**: Messages per second (higher is better)
+See [BENCHMARK_REPRODUCTION.md](BENCHMARK_REPRODUCTION.md)
 
 ---
 
@@ -411,7 +406,7 @@ For technical deep-dives on our optimization journey, see [Optimization Diary](d
 
 ## Contributing
 
-This project is maintained by **SilverstreamsAI**.
+This project is maintained by **Lattice9AI**.
 
 - **Issues & Discussions**: Welcome for bug reports, performance questions, and feature discussions
 - **Pull Requests**: Bug fixes and performance optimizations welcome (see [CONTRIBUTING.md](CONTRIBUTING.md))
