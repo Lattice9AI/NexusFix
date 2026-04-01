@@ -13,6 +13,7 @@
 #include "nexusfix/types/field_types.hpp"
 #include "nexusfix/interfaces/i_message.hpp"
 #include "nexusfix/memory/buffer_pool.hpp"  // For CACHE_LINE_SIZE
+#include "nexusfix/parser/timestamp_parser.hpp"
 
 namespace nfx {
 
@@ -130,6 +131,11 @@ struct FieldView {
     [[nodiscard]] constexpr std::optional<TimeInForce> as_time_in_force() const noexcept {
         if (value.empty()) return std::nullopt;
         return static_cast<TimeInForce>(value[0]);
+    }
+
+    /// Parse value as FIX UTCTimestamp (YYYYMMDD-HH:MM:SS.mmm)
+    [[nodiscard]] std::optional<ParsedTimestamp> as_timestamp() const noexcept {
+        return parse_timestamp(as_string());
     }
 
     // ========================================================================

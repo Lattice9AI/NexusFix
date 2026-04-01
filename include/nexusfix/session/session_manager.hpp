@@ -253,8 +253,8 @@ public:
         }
 
         // Route by message type
-        char msg_type = msg.msg_type();
-        if (msg_type::is_admin(msg_type)) {
+        char type = msg.msg_type();
+        if (nfx::msg_type::is_admin(type)) {
             handle_admin_message(msg);
         } else {
             handle_app_message(msg);
@@ -424,7 +424,7 @@ private:
         }
     }
 
-    void handle_heartbeat(const ParsedMessage& msg) noexcept {
+    void handle_heartbeat([[maybe_unused]] const ParsedMessage& msg) noexcept {
         ++stats_.heartbeats_received;
         // TestReqID handling if present
         // Nothing else to do - heartbeat timer already updated
@@ -527,7 +527,7 @@ private:
     // Error Handling
     // ========================================================================
 
-    void handle_parse_error(const ParseError& error) noexcept {
+    void handle_parse_error([[maybe_unused]] const ParseError& error) noexcept {
         if (callbacks_.on_error) {
             callbacks_.on_error(SessionError{SessionErrorCode::InvalidState});
         }

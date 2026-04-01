@@ -2,7 +2,7 @@
 title: "NexusFix: Zero-Allocation FIX Protocol Engine in C++23"
 published: true
 tags: cpp, performance, trading, opensource
-canonical_url: https://silverstream.tech/blog/nexusfix-zero-allocation-fix-engine
+canonical_url: https://github.com/Lattice9AI/NexusFIX
 ---
 
 # NexusFix: Zero-Allocation FIX Protocol Engine in C++23

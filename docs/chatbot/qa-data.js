@@ -40,7 +40,7 @@ const qaData = {
           "q": "Is this a solo project or a team effort?",
           "a": "NexusFix is developed by Lattice9AI. The architectural decisions, implementation, and benchmark methodology reflect a focused engineering effort. The project benefits from the broader C++ community's work - simdjson's two-stage parsing insight, the LMAX Disruptor pattern, and the C++ standards committee's work on PMR, constexpr, and SIMD support.",
           "a_short": "Developed by Lattice9AI, benefiting from the broader C++ community's work including simdjson, LMAX Disruptor, and C++ standards committee contributions.",
-          "keywords": ["solo", "team", "who", "developer", "silverstreams"],
+          "keywords": ["solo", "team", "who", "developer", "whets"],
           "audio_short": "audio/general_q05_short.mp3",
           "audio_full": "audio/general_q05_full.mp3"
         },

@@ -156,4 +156,4 @@ GitHub: [github.com/Lattice9AI/NexusFIX](https://github.com/Lattice9AI/NexusFIX)
 
 ---
 
-*Built by [Lattice9AI](https://github.com/Lattice9AI). For questions or collaboration: contact@silverstream.tech*
+*Built by [Lattice9AI](https://github.com/Lattice9AI). For questions or collaboration: nonagonal.portal@gmail.com*

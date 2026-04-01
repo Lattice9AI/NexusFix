@@ -8,7 +8,7 @@
 
 ## Reporting a Vulnerability
 
-Email: contact@silverstream.tech
+Email: nonagonal.portal@gmail.com
 
 Include:
 - Description of the vulnerability

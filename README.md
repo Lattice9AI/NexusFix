@@ -392,7 +392,7 @@ NexusFIX is designed for:
 
 ## Contact
 
-For questions or collaboration: contact@silverstream.tech
+For questions or collaboration: nonagonal.portal@gmail.com
 
 ---
 

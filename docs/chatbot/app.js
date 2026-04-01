@@ -220,7 +220,7 @@
         return '<div class="status-msg">' +
             'No match found for "' + escapeHtml(query) + '".<br>' +
             'Try browsing topics above or use different keywords.<br>' +
-            '<span class="fallback-contact">Or contact <strong>contact@silverstream.tech</strong></span>' +
+            '<span class="fallback-contact">Or contact <strong>nonagonal.portal@gmail.com</strong></span>' +
             '</div>';
     }
 

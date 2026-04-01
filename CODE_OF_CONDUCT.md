@@ -4,6 +4,6 @@ This project follows the [Contributor Covenant v2.1](https://www.contributor-cov
 
 ## Enforcement
 
-Instances of unacceptable behavior may be reported to: contact@silverstream.tech
+Instances of unacceptable behavior may be reported to: nonagonal.portal@gmail.com
 
 All complaints will be reviewed and investigated and will result in a response that is deemed necessary and appropriate to the circumstances.

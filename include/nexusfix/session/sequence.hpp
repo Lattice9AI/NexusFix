@@ -2,7 +2,6 @@
 
 #include <cstdint>
 #include <atomic>
-#include <optional>
 
 #include "nexusfix/types/field_types.hpp"
 #include "nexusfix/types/error.hpp"
@@ -114,96 +113,6 @@ public:
 private:
     std::atomic<uint32_t> next_outbound_;
     std::atomic<uint32_t> expected_inbound_;
-};
-
-// ============================================================================
-// Message Store Interface
-// ============================================================================
-
-/// Interface for persisting sent messages (for resend)
-class IMessageStore {
-public:
-    virtual ~IMessageStore() = default;
-
-    /// Store a sent message
-    virtual void store(uint32_t seq_num, std::span<const char> message) = 0;
-
-    /// Retrieve a stored message by sequence number
-    [[nodiscard]] virtual std::optional<std::span<const char>> retrieve(uint32_t seq_num) = 0;
-
-    /// Get range of available sequence numbers
-    [[nodiscard]] virtual std::pair<uint32_t, uint32_t> available_range() const = 0;
-
-    /// Clear all stored messages
-    virtual void clear() = 0;
-};
-
-// ============================================================================
-// In-Memory Message Store
-// ============================================================================
-
-/// Simple in-memory message store (circular buffer)
-template <size_t MaxMessages = 10000, size_t MaxMessageSize = 4096>
-class MemoryMessageStore : public IMessageStore {
-public:
-    MemoryMessageStore() noexcept : head_{0}, count_{0} {}
-
-    void store(uint32_t seq_num, std::span<const char> message) override {
-        if (message.size() > MaxMessageSize) return;
-
-        size_t idx = head_;
-        entries_[idx].seq_num = seq_num;
-        entries_[idx].length = message.size();
-        std::copy(message.begin(), message.end(), entries_[idx].data.begin());
-
-        head_ = (head_ + 1) % MaxMessages;
-        if (count_ < MaxMessages) ++count_;
-    }
-
-    [[nodiscard]] std::optional<std::span<const char>> retrieve(uint32_t seq_num) override {
-        // Search from newest to oldest
-        for (size_t i = 0; i < count_; ++i) {
-            size_t idx = (head_ - 1 - i + MaxMessages) % MaxMessages;
-            if (entries_[idx].seq_num == seq_num) {
-                return std::span<const char>{
-                    entries_[idx].data.data(),
-                    entries_[idx].length
-                };
-            }
-        }
-        return std::nullopt;
-    }
-
-    [[nodiscard]] std::pair<uint32_t, uint32_t> available_range() const override {
-        if (count_ == 0) return {0, 0};
-
-        uint32_t min_seq = UINT32_MAX;
-        uint32_t max_seq = 0;
-
-        for (size_t i = 0; i < count_; ++i) {
-            size_t idx = (head_ - 1 - i + MaxMessages) % MaxMessages;
-            min_seq = std::min(min_seq, entries_[idx].seq_num);
-            max_seq = std::max(max_seq, entries_[idx].seq_num);
-        }
-
-        return {min_seq, max_seq};
-    }
-
-    void clear() override {
-        head_ = 0;
-        count_ = 0;
-    }
-
-private:
-    struct Entry {
-        uint32_t seq_num{0};
-        size_t length{0};
-        std::array<char, MaxMessageSize> data{};
-    };
-
-    std::array<Entry, MaxMessages> entries_;
-    size_t head_;
-    size_t count_;
 };
 
 // ============================================================================

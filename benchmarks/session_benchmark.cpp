@@ -330,8 +330,33 @@ ThroughputStats benchmark_gap_tracker(size_t num_ops) {
 // Benchmark: Message Store
 // ============================================================================
 
+/// Simple circular buffer message store for benchmarking
+template <size_t MaxMessages = 10000, size_t MaxMessageSize = 512>
+struct BenchMessageStore {
+    struct Entry { uint32_t seq_num{0}; size_t length{0}; std::array<char, MaxMessageSize> data{}; };
+    std::array<Entry, MaxMessages> entries_;
+    size_t head_{0}, count_{0};
+
+    void store(uint32_t seq_num, std::span<const char> message) noexcept {
+        if (message.size() > MaxMessageSize) return;
+        entries_[head_] = {seq_num, message.size(), {}};
+        std::copy(message.begin(), message.end(), entries_[head_].data.begin());
+        head_ = (head_ + 1) % MaxMessages;
+        if (count_ < MaxMessages) ++count_;
+    }
+    std::optional<std::span<const char>> retrieve(uint32_t seq_num) noexcept {
+        for (size_t i = 0; i < count_; ++i) {
+            size_t idx = (head_ - 1 - i + MaxMessages) % MaxMessages;
+            if (entries_[idx].seq_num == seq_num)
+                return std::span<const char>{entries_[idx].data.data(), entries_[idx].length};
+        }
+        return std::nullopt;
+    }
+    void clear() noexcept { head_ = 0; count_ = 0; }
+};
+
 ThroughputStats benchmark_message_store(size_t num_ops) {
-    MemoryMessageStore<10000, 512> store;
+    BenchMessageStore<10000, 512> store;
     std::string msg = build_fix_message(EXEC_REPORT_BODY);
 
     // Warmup
