@@ -33,13 +33,19 @@ namespace nfx::util {
 namespace detail {
 
 /// RDTSCP - provides ordering guarantee and lower overhead than lfence+rdtsc
+/// On ARM64, uses CNTVCT_EL0 virtual counter (equivalent high-resolution timer)
 [[nodiscard]] inline uint64_t rdtscp() noexcept {
 #ifdef _MSC_VER
     // MSVC: use __rdtscp intrinsic
     unsigned int aux;
     return __rdtscp(&aux);
+#elif defined(__aarch64__) || defined(_M_ARM64)
+    // ARM64: read virtual counter (CNTVCT_EL0)
+    uint64_t val;
+    asm volatile ("isb; mrs %0, cntvct_el0" : "=r"(val));
+    return val;
 #else
-    // GCC/Clang: use inline assembly
+    // GCC/Clang x86: use inline assembly
     uint32_t lo, hi;
     asm volatile ("rdtscp" : "=a"(lo), "=d"(hi) :: "rcx");
     return (static_cast<uint64_t>(hi) << 32) | lo;

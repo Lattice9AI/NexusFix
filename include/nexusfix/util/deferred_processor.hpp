@@ -234,9 +234,15 @@ private:
     // ========================================================================
 
     static uint64_t rdtsc() noexcept {
+#if defined(__aarch64__) || defined(_M_ARM64)
+        uint64_t val;
+        asm volatile("isb; mrs %0, cntvct_el0" : "=r"(val));
+        return val;
+#else
         uint64_t lo, hi;
         asm volatile("rdtscp" : "=a"(lo), "=d"(hi) :: "rcx");
         return (hi << 32) | lo;
+#endif
     }
 
     // ========================================================================
@@ -365,9 +371,15 @@ public:
 
 private:
     static uint64_t rdtsc() noexcept {
+#if defined(__aarch64__) || defined(_M_ARM64)
+        uint64_t val;
+        asm volatile("isb; mrs %0, cntvct_el0" : "=r"(val));
+        return val;
+#else
         uint64_t lo, hi;
         asm volatile("rdtscp" : "=a"(lo), "=d"(hi) :: "rcx");
         return (hi << 32) | lo;
+#endif
     }
 
     void run() noexcept {
