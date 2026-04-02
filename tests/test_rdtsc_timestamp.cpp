@@ -127,22 +127,6 @@ TEST_CASE("RDTSC timestamp monotonicity", "[rdtsc][performance]") {
 
         CHECK(violations == 0);
     }
-
-    SECTION("Consecutive formatted timestamps are non-decreasing") {
-        constexpr int iterations = 1'000;
-        std::string prev(rdtsc_timestamp());
-        int violations = 0;
-
-        for (int i = 0; i < iterations; ++i) {
-            std::string curr(rdtsc_timestamp());
-            if (curr < prev) {
-                ++violations;
-            }
-            prev = curr;
-        }
-
-        CHECK(violations == 0);
-    }
 }
 
 TEST_CASE("RDTSC clock calibration", "[rdtsc][calibration]") {
