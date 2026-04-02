@@ -180,7 +180,10 @@ private:
         using namespace std::chrono;
 
         // Convert nanoseconds to time_point
-        auto tp = system_clock::time_point{nanoseconds{ns_since_epoch}};
+        // system_clock::time_point uses microseconds, so duration_cast is required
+        auto tp = system_clock::time_point{
+            duration_cast<system_clock::duration>(nanoseconds{ns_since_epoch})
+        };
         auto dp = floor<days>(tp);
         auto tod = tp - dp;
 

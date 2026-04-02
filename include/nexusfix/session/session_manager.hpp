@@ -570,7 +570,8 @@ private:
         if (message_store_) {
             // Get sequence number from message for storage key
             uint32_t seq_num = sequences_.current_outbound();
-            message_store_->store(seq_num, msg);
+            // Note: store() may fail if pool is full, but we continue to send
+            [[maybe_unused]] bool stored = message_store_->store(seq_num, msg);
         }
 
         bool sent = callbacks_.on_send(msg);
