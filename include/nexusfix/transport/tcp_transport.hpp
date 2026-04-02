@@ -66,6 +66,17 @@ public:
         return *this;
     }
 
+    /// Construct from existing socket handle (e.g., from TcpAcceptor::accept())
+    explicit TcpSocket(SocketHandle fd) noexcept
+        : fd_{fd}
+        , state_{is_valid_socket(fd) ? ConnectionState::Connected : ConnectionState::Disconnected}
+        , options_{}
+    {
+        if (is_valid_socket(fd_)) {
+            apply_options();
+        }
+    }
+
     /// Create socket
     [[nodiscard]] TransportResult<void> create() noexcept {
 #if NFX_PLATFORM_WINDOWS
@@ -440,6 +451,17 @@ public:
     /// Check if listening
     [[nodiscard]] bool is_listening() const noexcept {
         return is_valid_socket(fd_);
+    }
+
+    /// Get the local port (useful after listen(0) for ephemeral port)
+    [[nodiscard]] uint16_t local_port() const noexcept {
+        if (!is_valid_socket(fd_)) return 0;
+        struct sockaddr_in addr{};
+        SocketLength len = sizeof(addr);
+        if (::getsockname(fd_, reinterpret_cast<struct sockaddr*>(&addr), &len) < 0) {
+            return 0;
+        }
+        return ntohs(addr.sin_port);
     }
 
     /// Get raw socket handle

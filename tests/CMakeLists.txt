@@ -8,6 +8,7 @@ add_executable(nexusfix_tests
     test_timestamp_parser.cpp
     test_rdtsc_timestamp.cpp
     test_session.cpp
+    test_e2e.cpp
 )
 
 target_link_libraries(nexusfix_tests PRIVATE
