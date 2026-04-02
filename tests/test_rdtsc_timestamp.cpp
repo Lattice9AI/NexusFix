@@ -107,20 +107,41 @@ TEST_CASE("RDTSC timestamp basic functionality", "[rdtsc][platform]") {
 TEST_CASE("RDTSC timestamp monotonicity", "[rdtsc][performance]") {
     RdtscClock::initialize();
 
-    SECTION("Nanosecond counter advances monotonically") {
-        // Test monotonicity at the counter level (RdtscClock::now_ns),
-        // not at the formatted string level. Formatted timestamps can
-        // show non-monotonic milliseconds across calibration boundaries
-        // when system_clock and the hardware counter disagree slightly.
-        uint64_t ns1 = RdtscClock::now_ns();
+    SECTION("Consecutive now_ns calls are monotonically non-decreasing") {
+        // RDTSC clock guarantees hot-path monotonicity: consecutive calls
+        // without sleep return non-decreasing values. We do NOT test
+        // wall-time advancement across sleep_for() because CNTVCT_EL0
+        // may not advance during vCPU descheduling on virtualized ARM64
+        // (e.g., macOS GitHub Actions runners).
+        constexpr int iterations = 10'000;
+        uint64_t prev = RdtscClock::now_ns();
+        int violations = 0;
 
-        std::this_thread::sleep_for(std::chrono::milliseconds(2));
+        for (int i = 0; i < iterations; ++i) {
+            uint64_t curr = RdtscClock::now_ns();
+            if (curr < prev) {
+                ++violations;
+            }
+            prev = curr;
+        }
 
-        uint64_t ns2 = RdtscClock::now_ns();
+        CHECK(violations == 0);
+    }
 
-        CHECK(ns2 > ns1);
-        // Should advance by at least 1ms (sleep was 2ms, allow scheduler slack)
-        CHECK((ns2 - ns1) >= 1'000'000ULL);
+    SECTION("Consecutive formatted timestamps are non-decreasing") {
+        constexpr int iterations = 1'000;
+        std::string prev(rdtsc_timestamp());
+        int violations = 0;
+
+        for (int i = 0; i < iterations; ++i) {
+            std::string curr(rdtsc_timestamp());
+            if (curr < prev) {
+                ++violations;
+            }
+            prev = curr;
+        }
+
+        CHECK(violations == 0);
     }
 }
 
