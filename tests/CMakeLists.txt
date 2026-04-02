@@ -6,6 +6,7 @@ add_executable(nexusfix_tests
     test_market_data.cpp
     test_sbe.cpp
     test_timestamp_parser.cpp
+    test_rdtsc_timestamp.cpp
     test_session.cpp
 )
 

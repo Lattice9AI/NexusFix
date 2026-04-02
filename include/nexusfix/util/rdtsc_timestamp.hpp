@@ -19,6 +19,11 @@
 #include <atomic>
 #include <thread>
 
+// Platform-specific headers for RDTSC intrinsics
+#ifdef _MSC_VER
+    #include <intrin.h>  // MSVC intrinsics
+#endif
+
 namespace nfx::util {
 
 // ============================================================================
@@ -29,14 +34,27 @@ namespace detail {
 
 /// RDTSCP - provides ordering guarantee and lower overhead than lfence+rdtsc
 [[nodiscard]] inline uint64_t rdtscp() noexcept {
+#ifdef _MSC_VER
+    // MSVC: use __rdtscp intrinsic
+    unsigned int aux;
+    return __rdtscp(&aux);
+#else
+    // GCC/Clang: use inline assembly
     uint32_t lo, hi;
     asm volatile ("rdtscp" : "=a"(lo), "=d"(hi) :: "rcx");
     return (static_cast<uint64_t>(hi) << 32) | lo;
+#endif
 }
 
 /// Compiler barrier
 inline void compiler_barrier() noexcept {
+#ifdef _MSC_VER
+    // MSVC: use _ReadWriteBarrier intrinsic
+    _ReadWriteBarrier();
+#else
+    // GCC/Clang: use inline assembly
     asm volatile("" ::: "memory");
+#endif
 }
 
 } // namespace detail
