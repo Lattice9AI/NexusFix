@@ -121,12 +121,21 @@ public:
 
 private:
     static void estimate_frequency() noexcept {
+#if defined(__aarch64__) || defined(_M_ARM64)
+        // ARM64: read counter frequency directly from CNTFRQ_EL0
+        // This is exact (no sleep-based estimation needed)
+        uint64_t cntfrq;
+        asm volatile ("mrs %0, cntfrq_el0" : "=r"(cntfrq));
+        // Convert Hz to ticks-per-nanosecond
+        freq_ghz_.store(static_cast<double>(cntfrq) / 1'000'000'000.0,
+                        std::memory_order_relaxed);
+#else
+        // x86: measure TSC frequency via sleep-based calibration
         using namespace std::chrono;
 
         auto start_time = steady_clock::now();
         uint64_t start_tsc = detail::rdtscp();
 
-        // Brief sleep for calibration
         std::this_thread::sleep_for(milliseconds(10));
 
         uint64_t end_tsc = detail::rdtscp();
@@ -137,6 +146,7 @@ private:
         double cycles = static_cast<double>(end_tsc - start_tsc);
 
         freq_ghz_.store(cycles / elapsed_ns, std::memory_order_relaxed);
+#endif
     }
 
     // Calibration data (atomic for thread safety)
