@@ -183,6 +183,15 @@ public:
     /// Slow path: ~200ns (full date/time update + recalibration)
     [[nodiscard]] std::string_view get() noexcept {
         uint64_t now_ns = RdtscClock::now_ns();
+
+        // Enforce monotonicity across calibration boundaries.
+        // calibrate() resets base_ns_/base_tsc_ which can cause the next
+        // now_ns() to jump backwards by a few ms. Clamp to high-water mark.
+        if (now_ns < last_ns_) {
+            now_ns = last_ns_;
+        }
+        last_ns_ = now_ns;
+
         uint64_t now_sec = now_ns / 1'000'000'000ULL;
 
         // Slow path: second changed, update full timestamp
@@ -275,6 +284,7 @@ private:
     // Cache line aligned buffer for optimal performance
     alignas(64) char buffer_[32];
     uint64_t cached_second_;
+    uint64_t last_ns_{0};  // High-water mark for monotonicity across calibration
 };
 
 // ============================================================================
