@@ -197,7 +197,7 @@ public:
         return static_cast<size_t>(received);
     }
 
-    /// Poll for read events
+    /// Poll for read events (also detects remote close via POLLHUP/POLLERR)
     [[nodiscard]] bool poll_read(int timeout_ms) noexcept {
         if (!is_valid_socket(fd_)) return false;
 
@@ -206,13 +206,13 @@ public:
         pfd.fd = fd_;
         pfd.events = POLLIN;
         int ret = WSAPoll(&pfd, 1, timeout_ms);
-        return ret > 0 && (pfd.revents & POLLIN);
+        return ret > 0 && (pfd.revents & (POLLIN | POLLHUP | POLLERR));
 #else
         struct pollfd pfd{};
         pfd.fd = fd_;
         pfd.events = POLLIN;
         int ret = ::poll(&pfd, 1, timeout_ms);
-        return ret > 0 && (pfd.revents & POLLIN);
+        return ret > 0 && (pfd.revents & (POLLIN | POLLHUP | POLLERR));
 #endif
     }
 
