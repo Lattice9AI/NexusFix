@@ -9,6 +9,7 @@
 </p>
 
 <p align="center">
+  <a href="https://stratcraft.ai/nexusfix"><img src="https://img.shields.io/badge/Website-stratcraft.ai-blue.svg" alt="Website"></a>
   <a href="https://github.com/Lattice9AI/NexusFix/actions/workflows/ci.yml"><img src="https://github.com/Lattice9AI/NexusFix/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/C%2B%2B-23-blue.svg" alt="C++23">
   <img src="https://img.shields.io/badge/Library-Header--Only-blue.svg" alt="Header-Only">
