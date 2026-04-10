@@ -2,7 +2,7 @@
 title: "NexusFix: Zero-Allocation FIX Protocol Engine in C++23"
 published: true
 tags: cpp, performance, trading, opensource
-canonical_url: https://github.com/Lattice9AI/NexusFIX
+canonical_url: https://github.com/StratCraftsAI/NexusFIX
 ---
 
 # NexusFix: Zero-Allocation FIX Protocol Engine in C++23
@@ -75,7 +75,7 @@ Tested on Linux, GCC 13.3, 100K iterations.
 Header-only, C++23. Three commands:
 
 ```bash
-git clone https://github.com/Lattice9AI/NexusFIX.git
+git clone https://github.com/StratCraftsAI/NexusFIX.git
 cd NexusFIX && ./start.sh build
 
 # Run benchmarks yourself
@@ -101,7 +101,7 @@ auto msg = NewOrderSingle::Builder{}
 
 MIT licensed. FIX 4.4 and 5.0 supported.
 
-GitHub: [github.com/Lattice9AI/NexusFIX](https://github.com/Lattice9AI/NexusFIX)
+GitHub: [github.com/StratCraftsAI/NexusFIX](https://github.com/StratCraftsAI/NexusFIX)
 
 ---
 

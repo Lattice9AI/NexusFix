@@ -602,8 +602,8 @@ Cumulative: 3 x 1.5 x 1.2 x 1.3 = **7.0x** (measured: 7.5x)
 
 We welcome discussion and questions:
 
-- [GitHub Issues](https://github.com/Lattice9AI/NexusFix/issues) - Bug reports, questions
-- [GitHub Discussions](https://github.com/Lattice9AI/NexusFix/discussions) - Performance discussions
+- [GitHub Issues](https://github.com/StratCraftsAI/NexusFix/issues) - Bug reports, questions
+- [GitHub Discussions](https://github.com/StratCraftsAI/NexusFix/discussions) - Performance discussions
 
 ---
 

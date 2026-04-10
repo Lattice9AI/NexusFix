@@ -27,7 +27,7 @@ To submit a bug fix:
 ### Build Steps
 
 ```bash
-git clone https://github.com/Lattice9AI/NexusFIX.git
+git clone https://github.com/StratCraftsAI/NexusFIX.git
 cd NexusFIX
 
 # Release build

@@ -10,7 +10,7 @@
 
 <p align="center">
   <a href="https://stratcraft.ai/nexusfix"><img src="https://img.shields.io/badge/Website-stratcraft.ai-blue.svg" alt="Website"></a>
-  <a href="https://github.com/Lattice9AI/NexusFix/actions/workflows/ci.yml"><img src="https://github.com/Lattice9AI/NexusFix/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
+  <a href="https://github.com/StratCraftsAI/NexusFix/actions/workflows/ci.yml"><img src="https://github.com/StratCraftsAI/NexusFix/actions/workflows/ci.yml/badge.svg" alt="CI"></a>
   <img src="https://img.shields.io/badge/C%2B%2B-23-blue.svg" alt="C++23">
   <img src="https://img.shields.io/badge/Library-Header--Only-blue.svg" alt="Header-Only">
   <img src="https://img.shields.io/badge/License-MIT-green.svg" alt="MIT License">
@@ -196,7 +196,7 @@ How we achieved sub-300ns latency with Modern C++23:
 ### Installation
 
 ```bash
-git clone https://github.com/Lattice9AI/NexusFIX.git
+git clone https://github.com/StratCraftsAI/NexusFIX.git
 cd NexusFIX
 ./start.sh build
 ```
@@ -407,7 +407,7 @@ For technical deep-dives on our optimization journey, see [Optimization Diary](d
 
 ## Contributing
 
-This project is maintained by **Lattice9AI**.
+This project is maintained by **StratCraftsAI**.
 
 - **Issues & Discussions**: Welcome for bug reports, performance questions, and feature discussions
 - **Pull Requests**: Bug fixes and performance optimizations welcome (see [CONTRIBUTING.md](CONTRIBUTING.md))

@@ -24,6 +24,6 @@ I've been building a FIX protocol parser that uses modern C++23 to eliminate all
 
 Header-only library, MIT licensed. FIX 4.4 and 5.0 supported.
 
-GitHub: https://github.com/Lattice9AI/NexusFIX
+GitHub: https://github.com/StratCraftsAI/NexusFIX
 
-Happy to answer questions about the SIMD parsing approach or the optimization journey (documented in the [optimization diary](https://github.com/Lattice9AI/NexusFIX/blob/main/docs/optimization_diary.md)).
+Happy to answer questions about the SIMD parsing approach or the optimization journey (documented in the [optimization diary](https://github.com/StratCraftsAI/NexusFIX/blob/main/docs/optimization_diary.md)).

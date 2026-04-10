@@ -6,7 +6,7 @@ This guide explains how to reproduce the performance benchmarks claimed in the R
 
 ```bash
 # Clone the repository
-git clone https://github.com/Lattice9AI/NexusFix.git
+git clone https://github.com/StratCraftsAI/NexusFix.git
 cd NexusFix
 
 # Build with optimizations
@@ -267,7 +267,7 @@ If your benchmark results differ significantly from README claims:
    - OS/Kernel (`uname -a`)
    - Benchmark output
 
-Open an issue: https://github.com/Lattice9AI/NexusFix/issues
+Open an issue: https://github.com/StratCraftsAI/NexusFix/issues
 
 ## License
 
