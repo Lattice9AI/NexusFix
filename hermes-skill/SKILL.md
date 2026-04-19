@@ -1,6 +1,10 @@
 ---
 name: nexusfix
 description: Use when building, reviewing, debugging, or optimizing NexusFIX-based C++ FIX protocol code. Covers session management, order entry, market data subscription, low-latency message parsing, and zero-allocation hot-path constraints. Also use when generating new FIX connectivity code that must follow C++23 best practices with std::expected error handling, fixed-point arithmetic, and SIMD-accelerated parsing.
+version: 1.0.0
+author: StratCraftsAI
+license: MIT
+platforms: [linux, macos]
 ---
 
 # NexusFIX Development Expert
