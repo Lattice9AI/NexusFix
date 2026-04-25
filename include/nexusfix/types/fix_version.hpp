@@ -299,7 +299,7 @@ template<FixVersion Ver>
     // Optimize for common case: check length first
     if (begin_string.size() == 7) {
         // FIX.4.x versions (7 chars)
-        if (begin_string[5] == '4') {
+        if (begin_string[4] == '4') {
             const char minor = begin_string[6];
             if (minor >= '0' && minor <= '4') {
                 return static_cast<FixVersion>(minor - '0' + 1);  // FIX_4_0=1, FIX_4_4=5

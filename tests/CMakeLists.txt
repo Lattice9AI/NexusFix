@@ -8,7 +8,18 @@ add_executable(nexusfix_tests
     test_timestamp_parser.cpp
     test_rdtsc_timestamp.cpp
     test_session.cpp
+    test_messages.cpp
+    test_admin_messages.cpp
     test_e2e.cpp
+    test_mpsc_queue.cpp
+    test_spsc_queue.cpp
+    test_seqlock.cpp
+    test_fix_version.cpp
+    test_utils.cpp
+    test_serializer.cpp
+    test_deferred_processor.cpp
+    test_property.cpp
+    test_io_uring.cpp
 )
 
 target_link_libraries(nexusfix_tests PRIVATE
@@ -19,7 +30,7 @@ target_link_libraries(nexusfix_tests PRIVATE
 if(MSVC)
     target_compile_options(nexusfix_tests PRIVATE /W4)
 else()
-    target_compile_options(nexusfix_tests PRIVATE -Wall -Wextra -Wpedantic)
+    target_compile_options(nexusfix_tests PRIVATE -Wall -Wextra -Wpedantic -Wno-interference-size)
 endif()
 
 include(CTest)
