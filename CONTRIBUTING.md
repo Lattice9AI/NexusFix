@@ -2,9 +2,9 @@
 
 ## Current Policy
 
-**Pull requests are limited to bug fixes only.** Feature PRs will not be accepted at this time.
+**Pull requests are limited to bug fixes and performance optimizations.** Feature PRs will not be accepted at this time.
 
-Issues and discussions are welcome for bug reports, performance questions, and feature ideas.
+Issues and discussions are welcome for bug reports, performance questions, and feature ideas. For user-facing support and reporting expectations, see [SUPPORT.md](SUPPORT.md).
 
 ## Bug Fix PRs
 

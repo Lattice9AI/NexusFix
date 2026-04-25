@@ -26,6 +26,7 @@
   <a href="#features">Features</a> |
   <a href="#quick-start">Quick Start</a> |
   <a href="#documentation">Docs</a> |
+  <a href="#community">Community</a> |
   <a href="#contact">Contact</a>
 </p>
 
@@ -259,6 +260,28 @@ if (result) {
 
 ---
 
+## Documentation
+
+- [CHANGELOG.md](CHANGELOG.md) for release history and upgrade notes
+- [BENCHMARK_REPRODUCTION.md](BENCHMARK_REPRODUCTION.md) for reproducing published measurements
+- [CONTRIBUTING.md](CONTRIBUTING.md) for contribution boundaries and code standards
+- [SECURITY.md](SECURITY.md) for coordinated vulnerability disclosure
+- [SUPPORT.md](SUPPORT.md) for bug reports, usage questions, and response expectations
+- [ROADMAP.md](ROADMAP.md) for near-term and mid-term open-source priorities
+- [`docs/compare/`](docs/compare/) for benchmark reports and optimization writeups
+- [`docs/design/`](docs/design/) for architecture notes and design tickets that are public
+
+---
+
+## Community
+
+- Support: [SUPPORT.md](SUPPORT.md)
+- Contributing: [CONTRIBUTING.md](CONTRIBUTING.md)
+- Security: [SECURITY.md](SECURITY.md)
+- Code of Conduct: [CODE_OF_CONDUCT.md](CODE_OF_CONDUCT.md)
+
+---
+
 ## Build Options
 
 | CMake Option | Default | Description |
@@ -326,7 +349,7 @@ See [BENCHMARK_REPRODUCTION.md](BENCHMARK_REPRODUCTION.md)
 
 ---
 
-## Documentation
+## Technical References
 
 - [API Reference](docs/API_REFERENCE.md) - Complete API documentation
 - [Implementation Guide](docs/design/IMPLEMENTATION_GUIDE.md) - Architecture overview
