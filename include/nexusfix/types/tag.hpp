@@ -51,8 +51,12 @@ using EncryptMethod    = Tag<98>;   // Encryption method
 using HeartBtInt       = Tag<108>;  // Heartbeat interval
 using ResetSeqNumFlag  = Tag<141>;  // Reset sequence numbers
 using TestReqID        = Tag<112>;  // Test request ID
+using BeginSeqNo       = Tag<7>;    // Begin sequence number (ResendRequest)
+using EndSeqNo         = Tag<16>;   // End sequence number (ResendRequest)
+using NewSeqNo         = Tag<36>;   // New sequence number (SequenceReset)
 using RefSeqNum        = Tag<45>;   // Reference sequence number
 using Text             = Tag<58>;   // Free format text
+using GapFillFlag      = Tag<123>;  // Gap fill flag (SequenceReset)
 
 // ============================================================================
 // Order Tags (NewOrderSingle 35=D)
@@ -228,6 +232,12 @@ template<> struct TagInfo<108> {
     static constexpr bool is_required = false;
 };
 
+template<> struct TagInfo<123> {
+    static constexpr std::string_view name = "GapFillFlag";
+    static constexpr bool is_header = false;
+    static constexpr bool is_required = false;
+};
+
 template<> struct TagInfo<141> {
     static constexpr std::string_view name = "ResetSeqNumFlag";
     static constexpr bool is_header = false;
@@ -236,6 +246,24 @@ template<> struct TagInfo<141> {
 
 template<> struct TagInfo<112> {
     static constexpr std::string_view name = "TestReqID";
+    static constexpr bool is_header = false;
+    static constexpr bool is_required = false;
+};
+
+template<> struct TagInfo<7> {
+    static constexpr std::string_view name = "BeginSeqNo";
+    static constexpr bool is_header = false;
+    static constexpr bool is_required = false;
+};
+
+template<> struct TagInfo<16> {
+    static constexpr std::string_view name = "EndSeqNo";
+    static constexpr bool is_header = false;
+    static constexpr bool is_required = false;
+};
+
+template<> struct TagInfo<36> {
+    static constexpr std::string_view name = "NewSeqNo";
     static constexpr bool is_header = false;
     static constexpr bool is_required = false;
 };
@@ -395,17 +423,20 @@ consteval std::array<TagEntry, MAX_COMMON_TAG> create_tag_table() {
     // Populate known tags
     table[1]  = {TagInfo<1>::name, TagInfo<1>::is_header, TagInfo<1>::is_required};
     table[6]  = {TagInfo<6>::name, TagInfo<6>::is_header, TagInfo<6>::is_required};
+    table[7]  = {TagInfo<7>::name, TagInfo<7>::is_header, TagInfo<7>::is_required};
     table[8]  = {TagInfo<8>::name, TagInfo<8>::is_header, TagInfo<8>::is_required};
     table[9]  = {TagInfo<9>::name, TagInfo<9>::is_header, TagInfo<9>::is_required};
     table[10] = {TagInfo<10>::name, TagInfo<10>::is_header, TagInfo<10>::is_required};
     table[11] = {TagInfo<11>::name, TagInfo<11>::is_header, TagInfo<11>::is_required};
     table[14] = {TagInfo<14>::name, TagInfo<14>::is_header, TagInfo<14>::is_required};
+    table[16] = {TagInfo<16>::name, TagInfo<16>::is_header, TagInfo<16>::is_required};
     table[17] = {TagInfo<17>::name, TagInfo<17>::is_header, TagInfo<17>::is_required};
     table[21] = {TagInfo<21>::name, TagInfo<21>::is_header, TagInfo<21>::is_required};
     table[31] = {TagInfo<31>::name, TagInfo<31>::is_header, TagInfo<31>::is_required};
     table[32] = {TagInfo<32>::name, TagInfo<32>::is_header, TagInfo<32>::is_required};
     table[34] = {TagInfo<34>::name, TagInfo<34>::is_header, TagInfo<34>::is_required};
     table[35] = {TagInfo<35>::name, TagInfo<35>::is_header, TagInfo<35>::is_required};
+    table[36] = {TagInfo<36>::name, TagInfo<36>::is_header, TagInfo<36>::is_required};
     table[37] = {TagInfo<37>::name, TagInfo<37>::is_header, TagInfo<37>::is_required};
     table[38] = {TagInfo<38>::name, TagInfo<38>::is_header, TagInfo<38>::is_required};
     table[39] = {TagInfo<39>::name, TagInfo<39>::is_header, TagInfo<39>::is_required};
@@ -428,6 +459,7 @@ consteval std::array<TagEntry, MAX_COMMON_TAG> create_tag_table() {
     table[108] = {TagInfo<108>::name, TagInfo<108>::is_header, TagInfo<108>::is_required};
     table[112] = {TagInfo<112>::name, TagInfo<112>::is_header, TagInfo<112>::is_required};
     table[122] = {TagInfo<122>::name, TagInfo<122>::is_header, TagInfo<122>::is_required};
+    table[123] = {TagInfo<123>::name, TagInfo<123>::is_header, TagInfo<123>::is_required};
     table[141] = {TagInfo<141>::name, TagInfo<141>::is_header, TagInfo<141>::is_required};
     table[150] = {TagInfo<150>::name, TagInfo<150>::is_header, TagInfo<150>::is_required};
     table[151] = {TagInfo<151>::name, TagInfo<151>::is_header, TagInfo<151>::is_required};

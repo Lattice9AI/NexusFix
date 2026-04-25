@@ -17,6 +17,7 @@ option(NFX_ENABLE_MIMALLOC "Enable mimalloc allocator for per-session heaps" OFF
 option(NFX_BUILD_BENCHMARKS "Build benchmarks" ON)
 option(NFX_BUILD_TESTS "Build tests" ON)
 option(NFX_BUILD_EXAMPLES "Build examples" ON)
+option(NFX_ENABLE_COVERAGE "Enable code coverage instrumentation (GCC/Clang)" OFF)
 
 # Dependencies via FetchContent
 include(FetchContent)
@@ -151,6 +152,17 @@ else()
             add_link_options(-flto=thin)
         endif()
         set(CMAKE_INTERPROCEDURAL_OPTIMIZATION TRUE)
+    endif()
+endif()
+
+# Code coverage instrumentation (GCC/Clang only)
+if(NFX_ENABLE_COVERAGE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        add_compile_options(--coverage -fprofile-arcs -ftest-coverage -fno-inline)
+        add_link_options(--coverage)
+        message(STATUS "Code coverage instrumentation enabled")
+    else()
+        message(WARNING "NFX_ENABLE_COVERAGE only supported on GCC/Clang, ignoring")
     endif()
 endif()
 

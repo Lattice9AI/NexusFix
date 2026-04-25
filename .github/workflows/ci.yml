@@ -93,6 +93,63 @@ jobs:
       - name: Test
         run: ctest --test-dir build --output-on-failure -C Release
 
+  # Code coverage (Linux GCC, Debug build for accurate line coverage)
+  coverage:
+    runs-on: ubuntu-24.04
+    name: Coverage
+    if: github.event_name == 'push' && github.ref == 'refs/heads/main' || github.event_name == 'pull_request'
+
+    steps:
+      - name: Checkout
+        uses: actions/checkout@v4
+
+      - name: Install dependencies
+        run: |
+          sudo apt-get update
+          sudo apt-get install -y ninja-build lcov
+
+      - name: Configure with coverage
+        env:
+          CC: gcc-14
+          CXX: g++-14
+        run: |
+          cmake -B build -G Ninja \
+            -DCMAKE_BUILD_TYPE=Debug \
+            -DNFX_BUILD_TESTS=ON \
+            -DNFX_BUILD_BENCHMARKS=OFF \
+            -DNFX_BUILD_EXAMPLES=OFF \
+            -DNFX_ENABLE_SIMD=OFF \
+            -DNFX_ENABLE_LOGGING=OFF \
+            -DNFX_ENABLE_ABSEIL=OFF \
+            -DNFX_ENABLE_COVERAGE=ON
+
+      - name: Build
+        run: cmake --build build
+
+      - name: Test
+        run: ctest --test-dir build --output-on-failure
+
+      - name: Generate coverage report
+        run: |
+          lcov --capture --directory build --output-file coverage.info \
+            --gcov-tool gcov-14 --ignore-errors mismatch
+          lcov --remove coverage.info \
+            '/usr/*' \
+            '*/tests/*' \
+            '*/build/*' \
+            '*/benchmarks/*' \
+            '*/examples/*' \
+            '*/_deps/*' \
+            --output-file coverage.info
+          lcov --list coverage.info
+
+      - name: Upload to Codecov
+        uses: codecov/codecov-action@v4
+        with:
+          file: coverage.info
+          fail_ci_if_error: true
+          token: ${{ secrets.CODECOV_TOKEN }}
+
   # Linux with full features (io_uring, SIMD, Abseil)
   linux-full:
     runs-on: ubuntu-24.04

@@ -1,0 +1,61 @@
+codecov:
+  require_ci_to_pass: true
+
+coverage:
+  precision: 2
+  round: down
+
+  status:
+    project:
+      default:
+        target: 75%
+        threshold: 2%
+        if_ci_failed: error
+
+    patch:
+      default:
+        target: 80%
+        threshold: 5%
+
+  # Per-module coverage targets
+  flags:
+    parser:
+      paths:
+        - include/nexusfix/parser/
+      carryforward: true
+    session:
+      paths:
+        - include/nexusfix/session/
+      carryforward: true
+    memory:
+      paths:
+        - include/nexusfix/memory/
+      carryforward: true
+    types:
+      paths:
+        - include/nexusfix/types/
+      carryforward: true
+    messages:
+      paths:
+        - include/nexusfix/messages/
+      carryforward: true
+    transport:
+      paths:
+        - include/nexusfix/transport/
+      carryforward: true
+    util:
+      paths:
+        - include/nexusfix/util/
+      carryforward: true
+
+ignore:
+  - tests/
+  - benchmarks/
+  - examples/
+  - build/
+  - _deps/
+
+comment:
+  layout: "reach,diff,flags,files"
+  behavior: default
+  require_changes: false
