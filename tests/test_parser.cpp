@@ -8,6 +8,8 @@
 #include "nexusfix/parser/consteval_parser.hpp"
 #include "nexusfix/parser/runtime_parser.hpp"
 #include "nexusfix/parser/structural_index.hpp"
+#include "nexusfix/parser/simd_checksum.hpp"
+#include "nexusfix/parser/repeating_group.hpp"
 #include "nexusfix/interfaces/i_message.hpp"
 
 using namespace nfx;
@@ -147,8 +149,8 @@ TEST_CASE("FieldTable O(1) lookup", "[parser][field_view][regression]") {
     const char* val1 = "AAPL";
     const char* val2 = "100";
 
-    table.set(55, std::span<const char>{val1, 4});
-    table.set(38, std::span<const char>{val2, 3});
+    REQUIRE(table.set(55, std::span<const char>{val1, 4}));
+    REQUIRE(table.set(38, std::span<const char>{val2, 3}));
 
     SECTION("Lookup existing") {
         REQUIRE(table.has(55));
@@ -304,6 +306,59 @@ TEST_CASE("IndexedParser O(1) lookup", "[parser][runtime][regression]") {
         REQUIRE(parser.get_char(54) == '1');
 
         REQUIRE(!parser.has_field(999));
+    }
+
+    SECTION("High-numbered tags (overflow)") {
+        // Build a Logon with tag 553 (Username) and tag 554 (Password)
+        std::string body =
+            "8=FIX.4.4\x01" "9=999\x01" "35=A\x01" "49=CLIENT\x01"
+            "56=SERVER\x01" "34=1\x01" "52=20231215-10:30:00\x01"
+            "98=0\x01" "108=30\x01"
+            "553=user1\x01" "554=pass1\x01";
+        // Compute checksum and append trailer
+        uint8_t sum = 0;
+        for (char c : body) sum += static_cast<uint8_t>(c);
+        char cs[3];
+        cs[0] = '0' + (sum / 100);
+        cs[1] = '0' + ((sum / 10) % 10);
+        cs[2] = '0' + (sum % 10);
+        std::string msg = body + "10=" + std::string(cs, 3) + "\x01";
+
+        auto r = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(r.has_value());
+
+        auto& p = *r;
+        REQUIRE(p.has_field(553));
+        REQUIRE(p.get_string(553) == "user1");
+        REQUIRE(p.has_field(554));
+        REQUIRE(p.get_string(554) == "pass1");
+        // Low tags still work
+        REQUIRE(p.has_field(98));
+        REQUIRE(p.get_string(108) == "30");
+    }
+
+    SECTION("Overflow exhaustion returns error") {
+        // Build a message with > 8 distinct tags >= 512 to exhaust overflow
+        std::string body =
+            "8=FIX.4.4\x01" "9=999\x01" "35=A\x01" "49=CLIENT\x01"
+            "56=SERVER\x01" "34=1\x01" "52=20231215-10:30:00\x01";
+        // Add 9 high tags (overflow capacity is 8, so 9th should fail)
+        for (int t = 553; t <= 561; ++t) {
+            body += std::to_string(t) + "=val\x01";
+        }
+        uint8_t sum = 0;
+        for (char c : body) sum += static_cast<uint8_t>(c);
+        char cs[3];
+        cs[0] = '0' + (sum / 100);
+        cs[1] = '0' + ((sum / 10) % 10);
+        cs[2] = '0' + (sum % 10);
+        std::string msg = body + "10=" + std::string(cs, 3) + "\x01";
+
+        auto r = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!r.has_value());
+        REQUIRE(r.error().code == ParseErrorCode::OverflowExhausted);
     }
 }
 
@@ -543,5 +598,416 @@ TEST_CASE("PaddedMessageBuffer", "[parser][simd][structural][regression]") {
 
         REQUIRE(idx.valid());
         REQUIRE(idx.soh_count == 19);
+    }
+}
+
+// ============================================================================
+// SIMD Checksum Tests
+// ============================================================================
+
+TEST_CASE("Checksum scalar basics", "[parser][checksum][regression]") {
+    using namespace nfx::parser;
+
+    SECTION("Known value from EXEC_REPORT") {
+        uint8_t result = checksum_scalar(EXEC_REPORT.data(), EXEC_REPORT.size());
+        // Verify it produces a deterministic value
+        uint8_t expected = 0;
+        for (char c : EXEC_REPORT) {
+            expected += static_cast<uint8_t>(c);
+        }
+        REQUIRE(result == expected);
+    }
+
+    SECTION("Empty input") {
+        uint8_t result = checksum_scalar("", 0);
+        REQUIRE(result == 0);
+    }
+
+    SECTION("Single byte") {
+        char c = 'A';  // 0x41 = 65
+        uint8_t result = checksum_scalar(&c, 1);
+        REQUIRE(result == 65);
+    }
+
+    SECTION("All zeros") {
+        char zeros[16] = {};
+        uint8_t result = checksum_scalar(zeros, sizeof(zeros));
+        REQUIRE(result == 0);
+    }
+
+    SECTION("All 0xFF") {
+        char ffs[16];
+        std::memset(ffs, 0xFF, sizeof(ffs));
+        uint8_t result = checksum_scalar(ffs, sizeof(ffs));
+        // 16 * 255 = 4080, mod 256 = 4080 - 15*256 = 4080 - 3840 = 240
+        REQUIRE(result == static_cast<uint8_t>(16 * 255));
+    }
+}
+
+TEST_CASE("Checksum dispatch consistency", "[parser][checksum][regression]") {
+    using namespace nfx::parser;
+
+    SECTION("Scalar matches auto-dispatch for EXEC_REPORT") {
+        uint8_t scalar = checksum_scalar(EXEC_REPORT.data(), EXEC_REPORT.size());
+        uint8_t dispatched = checksum(EXEC_REPORT.data(), EXEC_REPORT.size());
+        REQUIRE(scalar == dispatched);
+    }
+
+    SECTION("string_view overload") {
+        uint8_t from_ptr = checksum(EXEC_REPORT.data(), EXEC_REPORT.size());
+        uint8_t from_sv = checksum(std::string_view{EXEC_REPORT});
+        REQUIRE(from_ptr == from_sv);
+    }
+
+    SECTION("span overload") {
+        uint8_t from_ptr = checksum(EXEC_REPORT.data(), EXEC_REPORT.size());
+        std::span<const char> sp{EXEC_REPORT.data(), EXEC_REPORT.size()};
+        uint8_t from_span = checksum(sp);
+        REQUIRE(from_ptr == from_span);
+    }
+
+    SECTION("Unaligned data") {
+        // Create unaligned buffer by offsetting by 1
+        std::string buf = "X" + EXEC_REPORT;
+        uint8_t aligned = checksum(EXEC_REPORT.data(), EXEC_REPORT.size());
+        uint8_t unaligned = checksum(buf.data() + 1, EXEC_REPORT.size());
+        REQUIRE(aligned == unaligned);
+    }
+
+    SECTION("Large 4096-byte input") {
+        std::string large(4096, 'B');  // 'B' = 66
+        uint8_t scalar = checksum_scalar(large.data(), large.size());
+        uint8_t dispatched = checksum(large.data(), large.size());
+        REQUIRE(scalar == dispatched);
+    }
+
+#if defined(NFX_AVX2_CHECKSUM)
+    SECTION("AVX2 matches scalar") {
+        uint8_t scalar = checksum_scalar(EXEC_REPORT.data(), EXEC_REPORT.size());
+        uint8_t avx2 = checksum_avx2(EXEC_REPORT.data(), EXEC_REPORT.size());
+        REQUIRE(scalar == avx2);
+    }
+#endif
+
+#if defined(NFX_SSE2_CHECKSUM) || defined(NFX_AVX2_CHECKSUM) || defined(NFX_AVX512_CHECKSUM)
+    SECTION("SSE2 matches scalar") {
+        uint8_t scalar = checksum_scalar(EXEC_REPORT.data(), EXEC_REPORT.size());
+        uint8_t sse2 = checksum_sse2(EXEC_REPORT.data(), EXEC_REPORT.size());
+        REQUIRE(scalar == sse2);
+    }
+#endif
+
+#if defined(NFX_AVX512_CHECKSUM)
+    SECTION("AVX-512 matches scalar") {
+        uint8_t scalar = checksum_scalar(EXEC_REPORT.data(), EXEC_REPORT.size());
+        uint8_t avx512 = checksum_avx512(EXEC_REPORT.data(), EXEC_REPORT.size());
+        REQUIRE(scalar == avx512);
+    }
+#endif
+}
+
+TEST_CASE("IncrementalChecksum", "[parser][checksum][regression]") {
+    using namespace nfx::parser;
+
+    SECTION("Single update matches batch") {
+        IncrementalChecksum inc;
+        inc.update(EXEC_REPORT.data(), EXEC_REPORT.size());
+        uint8_t incremental = inc.finalize();
+        uint8_t batch = checksum(EXEC_REPORT.data(), EXEC_REPORT.size());
+        REQUIRE(incremental == batch);
+    }
+
+    SECTION("Chunked updates") {
+        IncrementalChecksum inc;
+        size_t mid = EXEC_REPORT.size() / 2;
+        inc.update(EXEC_REPORT.data(), mid);
+        inc.update(EXEC_REPORT.data() + mid, EXEC_REPORT.size() - mid);
+        uint8_t chunked = inc.finalize();
+        uint8_t batch = checksum(EXEC_REPORT.data(), EXEC_REPORT.size());
+        REQUIRE(chunked == batch);
+    }
+
+    SECTION("Reset and reuse") {
+        IncrementalChecksum inc;
+        inc.update("ABC", 3);
+        inc.reset();
+        REQUIRE(inc.finalize() == 0);
+
+        inc.update(EXEC_REPORT.data(), EXEC_REPORT.size());
+        uint8_t result = inc.finalize();
+        uint8_t expected = checksum(EXEC_REPORT.data(), EXEC_REPORT.size());
+        REQUIRE(result == expected);
+    }
+}
+
+TEST_CASE("Checksum formatting", "[parser][checksum][regression]") {
+    using namespace nfx::parser;
+
+    SECTION("format_checksum 3-digit") {
+        char buf[3];
+        format_checksum(255, buf);
+        REQUIRE(buf[0] == '2');
+        REQUIRE(buf[1] == '5');
+        REQUIRE(buf[2] == '5');
+    }
+
+    SECTION("format_checksum leading zero") {
+        char buf[3];
+        format_checksum(4, buf);
+        REQUIRE(buf[0] == '0');
+        REQUIRE(buf[1] == '0');
+        REQUIRE(buf[2] == '4');
+    }
+
+    SECTION("parse_checksum roundtrip") {
+        char buf[3];
+        for (int i = 0; i < 256; ++i) {
+            format_checksum(static_cast<uint8_t>(i), buf);
+            uint8_t parsed = parse_checksum(buf);
+            REQUIRE(parsed == static_cast<uint8_t>(i));
+        }
+    }
+}
+
+TEST_CASE("FIX checksum validation", "[parser][checksum][regression]") {
+    using namespace nfx::parser;
+
+    SECTION("validate_fix_checksum on valid message") {
+        // Build a message with correct checksum
+        std::string body =
+            "8=FIX.4.4\x01" "9=5\x01" "35=0\x01";
+        uint8_t sum = checksum(body.data(), body.size());
+        char cs[3];
+        format_checksum(sum, cs);
+        std::string msg = body + "10=" + std::string(cs, 3) + "\x01";
+        REQUIRE(validate_fix_checksum(msg));
+    }
+
+    SECTION("validate_fix_checksum on corrupted message") {
+        std::string body =
+            "8=FIX.4.4\x01" "9=5\x01" "35=0\x01";
+        std::string msg = body + "10=000\x01";
+        // Unless checksum happens to be 000, this should fail
+        uint8_t actual = checksum(body.data(), body.size());
+        if (actual != 0) {
+            REQUIRE_FALSE(validate_fix_checksum(msg));
+        }
+    }
+
+    SECTION("calculate_fix_checksum") {
+        std::string body = "8=FIX.4.4\x01" "9=5\x01" "35=0\x01";
+        uint8_t result = calculate_fix_checksum(body);
+        uint8_t expected = checksum(body.data(), body.size());
+        REQUIRE(result == expected);
+    }
+}
+
+// ============================================================================
+// Repeating Group Tests
+// ============================================================================
+
+TEST_CASE("RepeatingGroupIterator single entry", "[parser][repeating_group][regression]") {
+    using namespace nfx::parser;
+
+    // Single MD entry: 269=0|270=150.50|271=1000|
+    std::string data = "269=0\x01" "270=150.50\x01" "271=1000\x01";
+    std::span<const char> sp{data.data(), data.size()};
+
+    RepeatingGroupIterator iter{sp, tag::MDEntryType::value, 1};
+    REQUIRE(iter.count() == 1);
+    REQUIRE(iter.current() == 0);
+
+    SECTION("Field access via get_field") {
+        REQUIRE(iter.has_next());
+        auto entry = iter.next();
+
+        auto type_field = entry.get_field(tag::MDEntryType::value);
+        REQUIRE(type_field.is_valid());
+        REQUIRE(type_field.value[0] == '0');
+    }
+
+    SECTION("get_string") {
+        auto entry = iter.next();
+        auto sv = entry.get_string(tag::MDEntryType::value);
+        REQUIRE(sv == "0");
+    }
+
+    SECTION("get_int") {
+        auto entry = iter.next();
+        auto val = entry.get_int(tag::MDEntrySize::value);
+        REQUIRE(val.has_value());
+        REQUIRE(*val == 1000);
+    }
+
+    SECTION("get_price") {
+        auto entry = iter.next();
+        auto price = entry.get_price(tag::MDEntryPx::value);
+        REQUIRE(price.raw != 0);
+    }
+}
+
+TEST_CASE("RepeatingGroupIterator multiple entries", "[parser][repeating_group][regression]") {
+    using namespace nfx::parser;
+
+    // Two MD entries
+    std::string data =
+        "269=0\x01" "270=150.50\x01" "271=1000\x01"
+        "269=1\x01" "270=151.00\x01" "271=500\x01";
+    std::span<const char> sp{data.data(), data.size()};
+
+    RepeatingGroupIterator iter{sp, tag::MDEntryType::value, 2};
+    REQUIRE(iter.count() == 2);
+
+    SECTION("Iterate and track count") {
+        auto entry1 = iter.next();
+        REQUIRE(iter.current() == 1);
+        REQUIRE(entry1.get_char(tag::MDEntryType::value) == '0');
+
+        auto entry2 = iter.next();
+        REQUIRE(iter.current() == 2);
+        REQUIRE(entry2.get_char(tag::MDEntryType::value) == '1');
+
+        REQUIRE_FALSE(iter.has_next());
+    }
+}
+
+TEST_CASE("RepeatingGroupIterator edge cases", "[parser][repeating_group][regression]") {
+    using namespace nfx::parser;
+
+    SECTION("Empty group count=0") {
+        std::string data = "269=0\x01";
+        std::span<const char> sp{data.data(), data.size()};
+        RepeatingGroupIterator iter{sp, tag::MDEntryType::value, 0};
+        REQUIRE(iter.count() == 0);
+        REQUIRE_FALSE(iter.has_next());
+    }
+
+    SECTION("Exhausted iterator returns empty entry") {
+        std::string data = "269=0\x01";
+        std::span<const char> sp{data.data(), data.size()};
+        RepeatingGroupIterator iter{sp, tag::MDEntryType::value, 1};
+        [[maybe_unused]] auto consumed = iter.next();  // consume the one entry
+        REQUIRE_FALSE(iter.has_next());
+        auto empty = iter.next();
+        REQUIRE(empty.data.empty());
+    }
+}
+
+TEST_CASE("MDEntryIterator", "[parser][repeating_group][regression]") {
+    using namespace nfx::parser;
+
+    SECTION("Parse single MDEntry") {
+        std::string data =
+            "269=0\x01" "270=100.25\x01" "271=500\x01" "278=E001\x01";
+        std::span<const char> sp{data.data(), data.size()};
+
+        MDEntryIterator iter{sp, 1};
+        REQUIRE(iter.count() == 1);
+        REQUIRE(iter.has_next());
+
+        auto md = iter.next();
+        REQUIRE(md.entry_type == MDEntryType::Bid);
+        REQUIRE(md.entry_id == "E001");
+    }
+
+    SECTION("Parse multiple MDEntry") {
+        std::string data =
+            "269=0\x01" "270=100.00\x01" "271=500\x01"
+            "269=1\x01" "270=101.00\x01" "271=300\x01";
+        std::span<const char> sp{data.data(), data.size()};
+
+        MDEntryIterator iter{sp, 2};
+        REQUIRE(iter.count() == 2);
+
+        auto bid = iter.next();
+        REQUIRE(bid.entry_type == MDEntryType::Bid);
+
+        auto offer = iter.next();
+        REQUIRE(offer.entry_type == MDEntryType::Offer);
+
+        REQUIRE_FALSE(iter.has_next());
+    }
+
+    SECTION("Default delimiter tag is MDEntryType") {
+        std::string data = "269=2\x01" "270=99.50\x01";
+        std::span<const char> sp{data.data(), data.size()};
+
+        MDEntryIterator iter{sp, 1};  // Uses default delimiter_tag = 269
+        auto md = iter.next();
+        REQUIRE(md.entry_type == MDEntryType::Trade);
+    }
+}
+
+TEST_CASE("RelatedSymIterator", "[parser][repeating_group][regression]") {
+    using namespace nfx::parser;
+
+    SECTION("Parse single RelatedSymbol") {
+        std::string data =
+            "55=AAPL\x01" "48=US0378331005\x01" "207=NYSE\x01";
+        std::span<const char> sp{data.data(), data.size()};
+
+        RelatedSymIterator iter{sp, 1};
+        REQUIRE(iter.count() == 1);
+        REQUIRE(iter.has_next());
+
+        auto sym = iter.next();
+        REQUIRE(sym.symbol == "AAPL");
+        REQUIRE(sym.security_id == "US0378331005");
+        REQUIRE(sym.security_exchange == "NYSE");
+    }
+
+    SECTION("Parse multiple RelatedSymbol") {
+        std::string data =
+            "55=AAPL\x01" "48=US0378331005\x01"
+            "55=MSFT\x01" "48=US5949181045\x01";
+        std::span<const char> sp{data.data(), data.size()};
+
+        RelatedSymIterator iter{sp, 2};
+        auto sym1 = iter.next();
+        REQUIRE(sym1.symbol == "AAPL");
+
+        auto sym2 = iter.next();
+        REQUIRE(sym2.symbol == "MSFT");
+    }
+}
+
+TEST_CASE("parse_md_entry helper", "[parser][repeating_group][regression]") {
+    using namespace nfx::parser;
+
+    SECTION("Full fields") {
+        std::string data =
+            "269=0\x01" "270=150.50\x01" "271=1000\x01"
+            "279=0\x01" "278=E100\x01" "55=AAPL\x01"
+            "272=20231215\x01" "273=10:30:00\x01"
+            "290=1\x01" "346=42\x01";
+        std::span<const char> sp{data.data(), data.size()};
+
+        RepeatingGroupIterator iter{sp, tag::MDEntryType::value, 1};
+        auto entry = iter.next();
+        auto md = parse_md_entry(entry);
+
+        REQUIRE(md.entry_type == MDEntryType::Bid);
+        REQUIRE(md.update_action == MDUpdateAction::New);
+        REQUIRE(md.entry_id == "E100");
+        REQUIRE(md.symbol == "AAPL");
+        REQUIRE(md.entry_date == "20231215");
+        REQUIRE(md.entry_time == "10:30:00");
+        REQUIRE(md.position_no == 1);
+        REQUIRE(md.number_of_orders == 42);
+    }
+
+    SECTION("Minimal fields") {
+        std::string data = "269=1\x01" "270=200.00\x01" "271=50\x01";
+        std::span<const char> sp{data.data(), data.size()};
+
+        RepeatingGroupIterator iter{sp, tag::MDEntryType::value, 1};
+        auto entry = iter.next();
+        auto md = parse_md_entry(entry);
+
+        REQUIRE(md.entry_type == MDEntryType::Offer);
+        REQUIRE(md.entry_id.empty());
+        REQUIRE(md.symbol.empty());
+        REQUIRE(md.position_no == 0);
+        REQUIRE(md.number_of_orders == 0);
     }
 }

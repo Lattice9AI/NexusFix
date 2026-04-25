@@ -322,9 +322,10 @@ public:
             FieldView field = iter.next();
             if (!field.is_valid()) [[unlikely]] break;
 
-            // Store in lookup table for O(1) access
-            if (field.tag > 0 && static_cast<size_t>(field.tag) < MAX_TAG) [[likely]] {
-                parser.field_table_.set(field.tag, field.value);
+            // Store in lookup table (handles routing to flat array or overflow)
+            if (!parser.field_table_.set(field.tag, field.value)) [[unlikely]] {
+                return std::unexpected{ParseError{
+                    ParseErrorCode::OverflowExhausted, field.tag}};
             }
         }
 

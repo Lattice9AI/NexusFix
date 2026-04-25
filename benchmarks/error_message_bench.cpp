@@ -33,6 +33,7 @@ namespace old_impl {
         case nfx::ParseErrorCode::UnterminatedField:  return "Unterminated field";
         case nfx::ParseErrorCode::InvalidMsgType:     return "Invalid MsgType";
         case nfx::ParseErrorCode::GarbledMessage:     return "Garbled message";
+        case nfx::ParseErrorCode::OverflowExhausted: return "Field table overflow exhausted";
     }
     return "Unknown error";
 }

@@ -43,6 +43,11 @@ test/
 # Benchmark output files (keep markdown reports)
 docs/compare/*.txt
 
+# Core dumps
+core
+core.*
+vgcore.*
+
 # Temporary files
 *.tmp
 *.temp

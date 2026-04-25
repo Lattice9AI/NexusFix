@@ -7,6 +7,9 @@
 #include "nexusfix/session/state.hpp"
 #include "nexusfix/session/sequence.hpp"
 #include "nexusfix/session/session_manager.hpp"
+#include "nexusfix/session/session_handler.hpp"
+#include "nexusfix/session/coroutine.hpp"
+#include "nexusfix/store/i_message_store.hpp"
 
 using namespace nfx;
 
@@ -852,4 +855,407 @@ TEST_CASE("Session message stats tracking", "[session][integration]") {
     REQUIRE(ts.session.stats().messages_received >= 1);
     REQUIRE(ts.session.stats().bytes_sent > 0);
     REQUIRE(ts.session.stats().bytes_received > 0);
+}
+
+// ============================================================================
+// Session Handler Tests
+// ============================================================================
+
+TEST_CASE("NullSessionHandler satisfies concept", "[session][handler][regression]") {
+    static_assert(SessionHandler<NullSessionHandler>,
+        "NullSessionHandler must satisfy SessionHandler concept");
+
+    SECTION("All methods are no-op") {
+        NullSessionHandler handler;
+        ParsedMessage dummy;
+        handler.on_app_message(dummy);
+        handler.on_state_change(SessionState::Disconnected, SessionState::SocketConnected);
+        handler.on_error(SessionError{});
+        handler.on_logon();
+        handler.on_logout("reason");
+    }
+
+    SECTION("on_send returns true") {
+        NullSessionHandler handler;
+        char buf[] = "test";
+        REQUIRE(handler.on_send(std::span<const char>{buf, 4}) == true);
+    }
+}
+
+TEST_CASE("FunctionPtrHandler callbacks", "[session][handler][regression]") {
+    static_assert(SessionHandler<FunctionPtrHandler>,
+        "FunctionPtrHandler must satisfy SessionHandler concept");
+
+    SECTION("Callbacks invoked with context") {
+        struct Context {
+            bool logon_called{false};
+            bool logout_called{false};
+            std::string_view logout_reason;
+        };
+        Context ctx;
+
+        FunctionPtrHandler handler;
+        handler.context = &ctx;
+        handler.logon_fn = [](void* c) noexcept {
+            static_cast<Context*>(c)->logon_called = true;
+        };
+        handler.logout_fn = [](void* c, std::string_view reason) noexcept {
+            auto* p = static_cast<Context*>(c);
+            p->logout_called = true;
+            p->logout_reason = reason;
+        };
+
+        handler.on_logon();
+        REQUIRE(ctx.logon_called);
+
+        handler.on_logout("done");
+        REQUIRE(ctx.logout_called);
+        REQUIRE(ctx.logout_reason == "done");
+    }
+
+    SECTION("Null pointers safe") {
+        FunctionPtrHandler handler;
+        // All function pointers null - should not crash
+        ParsedMessage dummy;
+        handler.on_app_message(dummy);
+        handler.on_state_change(SessionState::Disconnected, SessionState::Active);
+        handler.on_error(SessionError{});
+        handler.on_logon();
+        handler.on_logout("test");
+    }
+
+    SECTION("on_send with null returns false") {
+        FunctionPtrHandler handler;
+        char buf[] = "data";
+        REQUIRE(handler.on_send(std::span<const char>{buf, 4}) == false);
+    }
+
+    SECTION("State change callback") {
+        struct Ctx {
+            SessionState from{SessionState::Disconnected};
+            SessionState to{SessionState::Disconnected};
+        };
+        Ctx ctx;
+
+        FunctionPtrHandler handler;
+        handler.context = &ctx;
+        handler.state_change_fn = [](void* c, SessionState f, SessionState t) noexcept {
+            auto* p = static_cast<Ctx*>(c);
+            p->from = f;
+            p->to = t;
+        };
+
+        handler.on_state_change(SessionState::Active, SessionState::LogoutPending);
+        REQUIRE(ctx.from == SessionState::Active);
+        REQUIRE(ctx.to == SessionState::LogoutPending);
+    }
+}
+
+// ============================================================================
+// Coroutine Tests
+// ============================================================================
+
+TEST_CASE("Task<int> create and get result", "[session][coroutine][regression]") {
+    auto coro = []() -> Task<int> {
+        co_return 42;
+    };
+
+    auto task = coro();
+    REQUIRE_FALSE(task.done());
+    int result = task.get();
+    REQUIRE(result == 42);
+    REQUIRE(task.done());
+}
+
+TEST_CASE("Task<int> lazy evaluation", "[session][coroutine][regression]") {
+    bool started = false;
+    auto coro = [&]() -> Task<int> {
+        started = true;
+        co_return 99;
+    };
+
+    auto task = coro();
+    // Lazy: should not have started yet
+    REQUIRE_FALSE(started);
+    REQUIRE_FALSE(task.done());
+
+    task.resume();
+    REQUIRE(started);
+    REQUIRE(task.done());
+}
+
+TEST_CASE("Task<void> side effect", "[session][coroutine][regression]") {
+    int counter = 0;
+    auto coro = [&]() -> Task<void> {
+        counter = 10;
+        co_return;
+    };
+
+    auto task = coro();
+    REQUIRE(counter == 0);
+    task.get();
+    REQUIRE(counter == 10);
+}
+
+TEST_CASE("Task<void> move semantics", "[session][coroutine][regression]") {
+    auto coro = []() -> Task<void> {
+        co_return;
+    };
+
+    auto task1 = coro();
+    REQUIRE(static_cast<bool>(task1));
+
+    auto task2 = std::move(task1);
+    REQUIRE(static_cast<bool>(task2));
+    REQUIRE_FALSE(static_cast<bool>(task1));
+
+    task2.get();
+    REQUIRE(task2.done());
+}
+
+TEST_CASE("Task exception propagation", "[session][coroutine][regression]") {
+    auto coro = []() -> Task<int> {
+        throw std::runtime_error("coroutine error");
+        co_return 0;
+    };
+
+    auto task = coro();
+    REQUIRE_THROWS_AS(task.get(), std::runtime_error);
+}
+
+TEST_CASE("Generator<int> sequence via next()", "[session][coroutine][regression]") {
+    auto gen_fn = []() -> Generator<int> {
+        co_yield 1;
+        co_yield 2;
+        co_yield 3;
+    };
+
+    auto gen = gen_fn();
+    auto v1 = gen.next();
+    REQUIRE(v1.has_value());
+    REQUIRE(*v1 == 1);
+
+    auto v2 = gen.next();
+    REQUIRE(v2.has_value());
+    REQUIRE(*v2 == 2);
+
+    auto v3 = gen.next();
+    REQUIRE(v3.has_value());
+    REQUIRE(*v3 == 3);
+
+    auto v4 = gen.next();
+    REQUIRE_FALSE(v4.has_value());
+}
+
+TEST_CASE("Generator<int> full sequence via next()", "[session][coroutine][regression]") {
+    auto gen_fn = []() -> Generator<int> {
+        for (int i = 0; i < 5; ++i) {
+            co_yield i;
+        }
+    };
+
+    auto gen = gen_fn();
+    std::vector<int> values;
+    while (auto v = gen.next()) {
+        values.push_back(*v);
+    }
+    REQUIRE(values.size() == 5);
+    REQUIRE(values[0] == 0);
+    REQUIRE(values[4] == 4);
+}
+
+TEST_CASE("Generator range-based for loop", "[session][coroutine][regression]") {
+    auto gen_fn = []() -> Generator<int> {
+        co_yield 10;
+        co_yield 20;
+        co_yield 30;
+    };
+
+    auto gen = gen_fn();
+    std::vector<int> values;
+    for (auto v : gen) {
+        values.push_back(v);
+    }
+    REQUIRE(values.size() == 3);
+    REQUIRE(values[0] == 10);
+    REQUIRE(values[1] == 20);
+    REQUIRE(values[2] == 30);
+}
+
+TEST_CASE("Generator empty range-based for loop", "[session][coroutine][regression]") {
+    auto gen_fn = []() -> Generator<int> {
+        co_return;
+    };
+
+    auto gen = gen_fn();
+    std::vector<int> values;
+    for (auto v : gen) {
+        values.push_back(v);
+    }
+    REQUIRE(values.empty());
+}
+
+TEST_CASE("Generator single element range-based for loop", "[session][coroutine][regression]") {
+    auto gen_fn = []() -> Generator<int> {
+        co_yield 42;
+    };
+
+    auto gen = gen_fn();
+    std::vector<int> values;
+    for (auto v : gen) {
+        values.push_back(v);
+    }
+    REQUIRE(values.size() == 1);
+    REQUIRE(values[0] == 42);
+}
+
+TEST_CASE("Generator empty", "[session][coroutine][regression]") {
+    auto gen_fn = []() -> Generator<int> {
+        co_return;
+    };
+
+    auto gen = gen_fn();
+    auto v = gen.next();
+    REQUIRE_FALSE(v.has_value());
+}
+
+TEST_CASE("Yield suspend and resume", "[session][coroutine][regression]") {
+    int step = 0;
+    auto coro = [&]() -> Task<void> {
+        step = 1;
+        co_await Yield{};
+        step = 2;
+        co_return;
+    };
+
+    auto task = coro();
+    REQUIRE(step == 0);
+
+    task.resume();
+    REQUIRE(step == 1);
+
+    task.resume();
+    REQUIRE(step == 2);
+    REQUIRE(task.done());
+}
+
+TEST_CASE("ReadyAwaitable immediate value", "[session][coroutine][regression]") {
+    auto coro = []() -> Task<int> {
+        int val = co_await ready(42);
+        co_return val;
+    };
+
+    auto task = coro();
+    int result = task.get();
+    REQUIRE(result == 42);
+}
+
+TEST_CASE("SuspendIf predicate", "[session][coroutine][regression]") {
+    SECTION("Predicate true suspends") {
+        int step = 0;
+        auto coro = [&]() -> Task<void> {
+            step = 1;
+            co_await suspend_if([&]() { return true; });
+            step = 2;
+            co_return;
+        };
+
+        auto task = coro();
+        task.resume();
+        REQUIRE(step == 1);
+        REQUIRE_FALSE(task.done());
+
+        task.resume();
+        REQUIRE(step == 2);
+    }
+
+    SECTION("Predicate false continues") {
+        int step = 0;
+        auto coro = [&]() -> Task<void> {
+            step = 1;
+            co_await suspend_if([&]() { return false; });
+            step = 2;
+            co_return;
+        };
+
+        auto task = coro();
+        task.resume();
+        // Should pass through without suspending
+        REQUIRE(step == 2);
+    }
+}
+
+// ============================================================================
+// Message Store Tests
+// ============================================================================
+
+TEST_CASE("NullMessageStore operations", "[session][store][regression]") {
+    using namespace nfx::store;
+
+    NullMessageStore store("TEST-SESSION");
+
+    SECTION("session_id") {
+        REQUIRE(store.session_id() == "TEST-SESSION");
+    }
+
+    SECTION("store returns true") {
+        char data[] = "test message";
+        REQUIRE(store.store(1, std::span<const char>{data, sizeof(data) - 1}));
+    }
+
+    SECTION("retrieve returns nullopt") {
+        REQUIRE_FALSE(store.retrieve(1).has_value());
+    }
+
+    SECTION("retrieve_range returns empty") {
+        auto range = store.retrieve_range(1, 10);
+        REQUIRE(range.empty());
+    }
+
+    SECTION("Sequence number tracking") {
+        REQUIRE(store.get_next_sender_seq_num() == 1);
+        REQUIRE(store.get_next_target_seq_num() == 1);
+
+        store.set_next_sender_seq_num(42);
+        store.set_next_target_seq_num(99);
+
+        REQUIRE(store.get_next_sender_seq_num() == 42);
+        REQUIRE(store.get_next_target_seq_num() == 99);
+    }
+
+    SECTION("Reset restores defaults") {
+        store.set_next_sender_seq_num(100);
+        store.set_next_target_seq_num(200);
+        store.reset();
+
+        REQUIRE(store.get_next_sender_seq_num() == 1);
+        REQUIRE(store.get_next_target_seq_num() == 1);
+    }
+
+    SECTION("Flush is no-op") {
+        store.flush();  // Should not throw or crash
+    }
+
+    SECTION("Stats are zero") {
+        auto s = store.stats();
+        REQUIRE(s.messages_stored == 0);
+        REQUIRE(s.messages_retrieved == 0);
+        REQUIRE(s.bytes_stored == 0);
+        REQUIRE(s.store_failures == 0);
+    }
+}
+
+TEST_CASE("IMessageStore polymorphic access", "[session][store][regression]") {
+    using namespace nfx::store;
+
+    SECTION("Virtual destructor via base pointer") {
+        std::unique_ptr<IMessageStore> store =
+            std::make_unique<NullMessageStore>("POLY");
+        REQUIRE(store->session_id() == "POLY");
+        REQUIRE(store->get_next_sender_seq_num() == 1);
+
+        store->set_next_sender_seq_num(5);
+        REQUIRE(store->get_next_sender_seq_num() == 5);
+        // Destructor runs via unique_ptr - should not leak
+    }
 }

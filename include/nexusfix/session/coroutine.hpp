@@ -325,9 +325,9 @@ public:
         }
 
         bool operator==(const Iterator& other) const noexcept {
-            if (!handle_ && !other.handle_) return true;
-            if (!handle_ || !other.handle_) return false;
-            return handle_.done() == other.handle_.done();
+            bool this_done = !handle_ || handle_.done();
+            bool other_done = !other.handle_ || other.handle_.done();
+            return this_done == other_done;
         }
 
         bool operator!=(const Iterator& other) const noexcept {

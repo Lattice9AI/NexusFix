@@ -238,8 +238,9 @@ private:
 // ============================================================================
 
 /// Fixed-size lookup table for common tags (O(1) access)
+/// Flat array for tags 0..MaxTag-1, inline overflow for tags >= MaxTag.
 /// Aligned to cache line boundary for optimal memory access
-template <size_t MaxTag = 512>
+template <size_t MaxTag = 512, size_t MaxOverflow = 8>
 class alignas(CACHE_LINE_SIZE) FieldTable {
 public:
     constexpr FieldTable() noexcept {
@@ -249,24 +250,39 @@ public:
     }
 
     /// Set field value
-    constexpr void set(int tag, std::span<const char> value) noexcept {
+    /// Returns true if stored, false if overflow exhausted (valid tag >= MaxTag, no room)
+    [[nodiscard]] constexpr bool set(int tag, std::span<const char> value) noexcept {
         if (tag > 0 && static_cast<size_t>(tag) < MaxTag) [[likely]] {
             entries_[tag] = FieldView{tag, value};
+            return true;
         }
+        if (tag > 0 && overflow_count_ < MaxOverflow) {
+            overflow_[overflow_count_++] = FieldView{tag, value};
+            return true;
+        }
+        return tag <= 0;  // tag <= 0 is not a real field, not an error
     }
 
-    /// Get field value (O(1))
+    /// Get field value (O(1) for tags < MaxTag, linear scan for overflow)
     [[nodiscard]] NFX_HOT constexpr FieldView get(int tag) const noexcept {
         if (tag > 0 && static_cast<size_t>(tag) < MaxTag) [[likely]] {
             return entries_[tag];
+        }
+        for (size_t i = 0; i < overflow_count_; ++i) {
+            if (overflow_[i].tag == tag) return overflow_[i];
         }
         return FieldView{};
     }
 
     /// Check if tag exists
     [[nodiscard]] NFX_HOT constexpr bool has(int tag) const noexcept {
-        return tag > 0 && static_cast<size_t>(tag) < MaxTag &&
-               entries_[tag].is_valid();
+        if (tag > 0 && static_cast<size_t>(tag) < MaxTag) [[likely]] {
+            return entries_[tag].is_valid();
+        }
+        for (size_t i = 0; i < overflow_count_; ++i) {
+            if (overflow_[i].tag == tag) return true;
+        }
+        return false;
     }
 
     /// Get string value for tag
@@ -289,14 +305,17 @@ public:
         for (auto& entry : entries_) {
             entry = FieldView{};
         }
+        overflow_count_ = 0;
     }
 
 private:
     std::array<FieldView, MaxTag> entries_;
+    std::array<FieldView, MaxOverflow> overflow_{};
+    size_t overflow_count_{0};
 };
 
 // Static assertion: FieldTable should be cache-line aligned
-static_assert(alignof(FieldTable<512>) >= CACHE_LINE_SIZE,
+static_assert(alignof(FieldTable<512, 8>) >= CACHE_LINE_SIZE,
     "FieldTable must be cache-line aligned for optimal memory access");
 
 // ============================================================================
