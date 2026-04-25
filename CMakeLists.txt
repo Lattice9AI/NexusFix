@@ -155,20 +155,6 @@ else()
     endif()
 endif()
 
-# Code coverage instrumentation (GCC/Clang only)
-if(NFX_ENABLE_COVERAGE)
-    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
-        add_compile_options(--coverage -fprofile-arcs -ftest-coverage -fno-inline)
-        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
-            add_compile_options(-fprofile-update=atomic)
-        endif()
-        add_link_options(--coverage)
-        message(STATUS "Code coverage instrumentation enabled")
-    else()
-        message(WARNING "NFX_ENABLE_COVERAGE only supported on GCC/Clang, ignoring")
-    endif()
-endif()
-
 # Main header-only library (for now)
 add_library(nexusfix INTERFACE)
 target_include_directories(nexusfix INTERFACE
@@ -176,6 +162,25 @@ target_include_directories(nexusfix INTERFACE
     $<INSTALL_INTERFACE:include>
 )
 target_compile_features(nexusfix INTERFACE cxx_std_23)
+
+# Code coverage instrumentation (GCC/Clang only)
+if(NFX_ENABLE_COVERAGE)
+    if(CMAKE_CXX_COMPILER_ID MATCHES "GNU|Clang")
+        target_compile_options(nexusfix INTERFACE
+            --coverage
+            -fprofile-arcs
+            -ftest-coverage
+            -fno-inline
+        )
+        if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+            target_compile_options(nexusfix INTERFACE -fprofile-update=atomic)
+        endif()
+        target_link_options(nexusfix INTERFACE --coverage)
+        message(STATUS "Code coverage instrumentation enabled")
+    else()
+        message(WARNING "NFX_ENABLE_COVERAGE only supported on GCC/Clang, ignoring")
+    endif()
+endif()
 
 # Windows socket library
 if(WIN32)
