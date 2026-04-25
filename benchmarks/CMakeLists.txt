@@ -53,7 +53,10 @@ set_target_properties(ranges_utils_bench PROPERTIES
 # Deferred processor benchmark
 add_executable(deferred_processor_bench deferred_processor_bench.cpp)
 target_link_libraries(deferred_processor_bench PRIVATE nexusfix pthread)
-target_compile_options(deferred_processor_bench PRIVATE -O3 -march=native -Wno-interference-size)
+target_compile_options(deferred_processor_bench PRIVATE -O3 -march=native)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(deferred_processor_bench PRIVATE -Wno-interference-size)
+endif()
 set_target_properties(deferred_processor_bench PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/benchmarks
 )
@@ -61,7 +64,10 @@ set_target_properties(deferred_processor_bench PROPERTIES
 # Optimization summary benchmark (before vs after all optimizations)
 add_executable(optimization_summary_bench optimization_summary_bench.cpp)
 target_link_libraries(optimization_summary_bench PRIVATE nexusfix pthread)
-target_compile_options(optimization_summary_bench PRIVATE -O3 -march=native -Wno-interference-size -Wno-pedantic -Wno-overflow -Wno-error)
+target_compile_options(optimization_summary_bench PRIVATE -O3 -march=native -Wno-pedantic -Wno-overflow -Wno-error)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(optimization_summary_bench PRIVATE -Wno-interference-size)
+endif()
 set_target_properties(optimization_summary_bench PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/benchmarks
 )
@@ -85,7 +91,10 @@ set_target_properties(multishot_recv_bench PROPERTIES
 # Thread-local pool benchmark
 add_executable(thread_local_pool_bench thread_local_pool_bench.cpp)
 target_link_libraries(thread_local_pool_bench PRIVATE nexusfix pthread)
-target_compile_options(thread_local_pool_bench PRIVATE -O3 -march=native -Wno-interference-size)
+target_compile_options(thread_local_pool_bench PRIVATE -O3 -march=native)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(thread_local_pool_bench PRIVATE -Wno-interference-size)
+endif()
 set_target_properties(thread_local_pool_bench PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/benchmarks
 )
@@ -133,7 +142,10 @@ set_target_properties(io_uring_transport_integration_bench PROPERTIES
 # MPSC queue benchmark (Disruptor-pattern multi-producer single-consumer)
 add_executable(mpsc_queue_bench mpsc_queue_bench.cpp)
 target_link_libraries(mpsc_queue_bench PRIVATE nexusfix pthread)
-target_compile_options(mpsc_queue_bench PRIVATE -O3 -march=native -Wno-interference-size)
+target_compile_options(mpsc_queue_bench PRIVATE -O3 -march=native)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(mpsc_queue_bench PRIVATE -Wno-interference-size)
+endif()
 set_target_properties(mpsc_queue_bench PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/benchmarks
 )
@@ -149,7 +161,10 @@ set_target_properties(sbe_benchmark PROPERTIES
 # Phase 2 utilities benchmark (branchless, string hash, seqlock, object pool)
 add_executable(phase2_utils_bench phase2_utils_bench.cpp)
 target_link_libraries(phase2_utils_bench PRIVATE nexusfix pthread)
-target_compile_options(phase2_utils_bench PRIVATE -O3 -march=native -Wno-interference-size)
+target_compile_options(phase2_utils_bench PRIVATE -O3 -march=native)
+if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+    target_compile_options(phase2_utils_bench PRIVATE -Wno-interference-size)
+endif()
 set_target_properties(phase2_utils_bench PROPERTIES
     RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/benchmarks
 )

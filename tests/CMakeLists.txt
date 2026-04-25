@@ -30,7 +30,10 @@ target_link_libraries(nexusfix_tests PRIVATE
 if(MSVC)
     target_compile_options(nexusfix_tests PRIVATE /W4)
 else()
-    target_compile_options(nexusfix_tests PRIVATE -Wall -Wextra -Wpedantic -Wno-interference-size)
+    target_compile_options(nexusfix_tests PRIVATE -Wall -Wextra -Wpedantic)
+    if(CMAKE_CXX_COMPILER_ID STREQUAL "GNU")
+        target_compile_options(nexusfix_tests PRIVATE -Wno-interference-size)
+    endif()
 endif()
 
 include(CTest)
