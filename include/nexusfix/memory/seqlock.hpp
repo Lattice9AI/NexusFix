@@ -38,6 +38,11 @@
 #define NFX_SEQLOCK_PAUSE() std::atomic_thread_fence(std::memory_order_seq_cst)
 #endif
 
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4324)  // structure was padded due to alignment specifier
+#endif
+
 namespace nfx::memory {
 
 // ============================================================================
@@ -306,5 +311,9 @@ private:
 };
 
 } // namespace nfx::memory
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 #undef NFX_SEQLOCK_PAUSE

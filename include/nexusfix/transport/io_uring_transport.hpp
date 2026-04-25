@@ -11,12 +11,14 @@
     #define NFX_IO_URING_AVAILABLE 0
 #endif
 
+#if !defined(_WIN32)
 #include <sys/socket.h>
 #include <netinet/in.h>
 #include <netinet/tcp.h>
 #include <arpa/inet.h>
 #include <netdb.h>
 #include <unistd.h>
+#endif
 #include <vector>
 #include <cstdlib>
 #include <cstring>

@@ -24,6 +24,12 @@
 #include <utility>
 
 #include "nexusfix/platform/platform.hpp"
+#include <cstring>
+
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4324)  // structure was padded due to alignment specifier
+#endif
 
 namespace nfx::util {
 
@@ -254,7 +260,7 @@ struct alignas(CACHE_LINE_SIZE) MessageBuffer {
 
     void set(const char* src, size_t len) noexcept {
         length = (len <= MAX_SIZE) ? len : MAX_SIZE;
-        __builtin_memcpy(data, src, length);
+        std::memcpy(data, src, length);
     }
 
     void clear() noexcept {
@@ -284,7 +290,7 @@ struct alignas(CACHE_LINE_SIZE) LargeBuffer {
 
     void set(const char* src, size_t len) noexcept {
         length = (len <= MAX_SIZE) ? len : MAX_SIZE;
-        __builtin_memcpy(data, src, length);
+        std::memcpy(data, src, length);
     }
 
     void clear() noexcept {
@@ -299,3 +305,7 @@ using LargeBufferPool = ThreadLocalPool<LargeBuffer, 16>;
 using PooledLargeBuffer = PooledPtr<LargeBuffer, 16>;
 
 } // namespace nfx::util
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

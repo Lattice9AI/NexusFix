@@ -46,6 +46,12 @@
 #include <chrono>
 #include <span>
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#pragma warning(push)
+#pragma warning(disable: 4324)  // structure was padded due to alignment specifier
+#endif
+
 namespace nfx::util {
 
 // ============================================================================
@@ -234,7 +240,9 @@ private:
     // ========================================================================
 
     static uint64_t rdtsc() noexcept {
-#if defined(__aarch64__) || defined(_M_ARM64)
+#if defined(_MSC_VER)
+        return __rdtsc();
+#elif defined(__aarch64__) || defined(_M_ARM64)
         uint64_t val;
         asm volatile("isb; mrs %0, cntvct_el0" : "=r"(val));
         return val;
@@ -371,7 +379,9 @@ public:
 
 private:
     static uint64_t rdtsc() noexcept {
-#if defined(__aarch64__) || defined(_M_ARM64)
+#if defined(_MSC_VER)
+        return __rdtsc();
+#elif defined(__aarch64__) || defined(_M_ARM64)
         uint64_t val;
         asm volatile("isb; mrs %0, cntvct_el0" : "=r"(val));
         return val;
@@ -399,3 +409,7 @@ private:
 };
 
 } // namespace nfx::util
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif

@@ -46,13 +46,16 @@ template<std::signed_integral T>
 template<std::unsigned_integral T>
 [[nodiscard]] constexpr T branchless_min(T a, T b) noexcept {
     // For unsigned, we use subtraction borrow
-    return b ^ ((a ^ b) & -static_cast<T>(a < b));
+    // Use ~x + 1 instead of -x to avoid MSVC C4146
+    const T mask = static_cast<T>(a < b);
+    return b ^ ((a ^ b) & (~mask + static_cast<T>(1)));
 }
 
 /// Branchless maximum for unsigned integers
 template<std::unsigned_integral T>
 [[nodiscard]] constexpr T branchless_max(T a, T b) noexcept {
-    return a ^ ((a ^ b) & -static_cast<T>(a < b));
+    const T mask = static_cast<T>(a < b);
+    return a ^ ((a ^ b) & (~mask + static_cast<T>(1)));
 }
 
 // ============================================================================
