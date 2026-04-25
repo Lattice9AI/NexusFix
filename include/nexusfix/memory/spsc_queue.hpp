@@ -22,6 +22,12 @@
 #include <type_traits>
 #include <new>
 
+#ifdef _MSC_VER
+#include <intrin.h>
+#pragma warning(push)
+#pragma warning(disable: 4324)  // structure was padded due to alignment specifier
+#endif
+
 namespace nfx::memory {
 
 // ============================================================================
@@ -103,7 +109,9 @@ public:
     void push(const T& item) noexcept {
         while (!try_push(item)) {
             // Spin - could add pause instruction here
-            #if defined(__x86_64__) || defined(_M_X64)
+            #if defined(_MSC_VER)
+            _mm_pause();
+            #elif defined(__x86_64__)
             asm volatile("pause" ::: "memory");
             #endif
         }
@@ -178,7 +186,9 @@ public:
     [[nodiscard]] T pop() noexcept {
         T item;
         while (!try_pop(item)) {
-            #if defined(__x86_64__) || defined(_M_X64)
+            #if defined(_MSC_VER)
+            _mm_pause();
+            #elif defined(__x86_64__)
             asm volatile("pause" ::: "memory");
             #endif
         }
@@ -289,3 +299,7 @@ private:
 };
 
 } // namespace nfx::memory
+
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
