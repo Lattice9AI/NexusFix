@@ -240,6 +240,10 @@ private:
 /// Fixed-size lookup table for common tags (O(1) access)
 /// Flat array for tags 0..MaxTag-1, inline overflow for tags >= MaxTag.
 /// Aligned to cache line boundary for optimal memory access
+#ifdef _MSC_VER
+#pragma warning(push)
+#pragma warning(disable: 4324)  // structure was padded due to alignment specifier
+#endif
 template <size_t MaxTag = 512, size_t MaxOverflow = 8>
 class alignas(CACHE_LINE_SIZE) FieldTable {
 public:
@@ -313,6 +317,9 @@ private:
     std::array<FieldView, MaxOverflow> overflow_{};
     size_t overflow_count_{0};
 };
+#ifdef _MSC_VER
+#pragma warning(pop)
+#endif
 
 // Static assertion: FieldTable should be cache-line aligned
 static_assert(alignof(FieldTable<512, 8>) >= CACHE_LINE_SIZE,
