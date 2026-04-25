@@ -6,6 +6,7 @@
 #include <atomic>
 #include <thread>
 #include <chrono>
+#include <mutex>
 #include <vector>
 #include <string>
 #include <cstring>

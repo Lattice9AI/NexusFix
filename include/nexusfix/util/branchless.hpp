@@ -193,7 +193,7 @@ template<std::integral T>
 
 /// Check if ASCII character is alphanumeric (branchless)
 [[nodiscard]] constexpr bool is_alnum(char c) noexcept {
-    return is_digit(c) | is_alpha(c);
+    return static_cast<bool>(static_cast<int>(is_digit(c)) | static_cast<int>(is_alpha(c)));
 }
 
 // ============================================================================
