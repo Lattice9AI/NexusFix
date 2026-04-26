@@ -64,13 +64,20 @@ template<size_t MaxSize = 4096>
 struct DeferredMessageBuffer {
     uint64_t timestamp;           // RDTSC timestamp when submitted
     uint32_t size;                // Actual message size
+    bool truncated_{false};       // True if message exceeded MaxSize
     alignas(16) char data[MaxSize];
 
     /// Copy data into buffer
     void set(std::span<const char> msg, uint64_t ts) noexcept {
         timestamp = ts;
+        truncated_ = (msg.size() > MaxSize);
         size = static_cast<uint32_t>(std::min(msg.size(), MaxSize));
         std::memcpy(data, msg.data(), size);
+    }
+
+    /// Check if message was truncated during set()
+    [[nodiscard]] bool truncated() const noexcept {
+        return truncated_;
     }
 
     /// Get message span
@@ -162,7 +169,7 @@ public:
     /// Submit message for deferred processing (HOT PATH)
     /// @param data Message data to defer
     /// @param timestamp Optional RDTSC timestamp (0 = auto)
-    /// @return true if submitted, false if queue full
+    /// @return true if submitted, false if queue full or message exceeds buffer capacity
     [[nodiscard]] NFX_HOT
     bool submit(std::span<const char> data, uint64_t timestamp = 0) noexcept {
         if (timestamp == 0) {
@@ -172,12 +179,17 @@ public:
         BufferType buffer;
         buffer.set(data, timestamp);
 
+        if (buffer.truncated()) [[unlikely]] {
+            return false;
+        }
+
         return queue_.try_push(std::move(buffer));
     }
 
-    /// Submit with spin wait (guaranteed delivery, may block)
-    NFX_HOT
-    void submit_blocking(std::span<const char> data, uint64_t timestamp = 0) noexcept {
+    /// Submit with spin wait (may block on full queue)
+    /// @return true if submitted, false if message exceeds buffer capacity
+    [[nodiscard]] NFX_HOT
+    bool submit_blocking(std::span<const char> data, uint64_t timestamp = 0) noexcept {
         if (timestamp == 0) {
             timestamp = rdtsc();
         }
@@ -185,7 +197,12 @@ public:
         BufferType buffer;
         buffer.set(data, timestamp);
 
+        if (buffer.truncated()) [[unlikely]] {
+            return false;
+        }
+
         queue_.push(std::move(buffer));
+        return true;
     }
 
     /// Get slot for in-place construction (advanced usage)
@@ -198,9 +215,15 @@ public:
     }
 
     /// Publish reserved slot
+    /// @return true if published, false if no slot reserved, truncated, or queue full
     NFX_HOT
     bool publish_slot() noexcept {
         if (!reserved_slot_.has_value()) {
+            return false;
+        }
+
+        if (reserved_slot_->truncated()) [[unlikely]] {
+            reserved_slot_.reset();
             return false;
         }
 

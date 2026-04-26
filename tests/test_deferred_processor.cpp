@@ -184,7 +184,166 @@ TEST_CASE("DeferredMessageBuffer", "[utils][deferred][regression]") {
         std::string large(500, 'A');
         buf.set(std::span<const char>(large.data(), large.size()), 0);
         REQUIRE(buf.size == 256);
+        REQUIRE(buf.truncated());
     }
+
+    SECTION("exactly at MaxSize sets no truncation") {
+        std::string exact(256, 'B');
+        buf.set(std::span<const char>(exact.data(), exact.size()), 42);
+        REQUIRE(buf.size == 256);
+        REQUIRE_FALSE(buf.truncated());
+        REQUIRE(buf.timestamp == 42);
+        REQUIRE(std::memcmp(buf.span().data(), exact.data(), 256) == 0);
+    }
+
+    SECTION("one byte over MaxSize sets truncation") {
+        std::string over(257, 'C');
+        buf.set(std::span<const char>(over.data(), over.size()), 99);
+        REQUIRE(buf.size == 256);
+        REQUIRE(buf.truncated());
+        REQUIRE(buf.timestamp == 99);
+        // Data contains first 256 bytes
+        REQUIRE(std::memcmp(buf.span().data(), over.data(), 256) == 0);
+    }
+
+    SECTION("small message clears truncation flag") {
+        // First set with oversized message
+        std::string large(500, 'D');
+        buf.set(std::span<const char>(large.data(), large.size()), 0);
+        REQUIRE(buf.truncated());
+
+        // Then set with small message - flag must clear
+        std::string small = "hello";
+        buf.set(std::span<const char>(small.data(), small.size()), 1);
+        REQUIRE_FALSE(buf.truncated());
+        REQUIRE(buf.size == small.size());
+    }
+}
+
+// ============================================================================
+// DeferredProcessor Truncation Rejection Tests
+// ============================================================================
+
+TEST_CASE("DeferredProcessor rejects oversized messages", "[utils][deferred][regression]") {
+    using Processor = DeferredProcessor<DeferredMessageBuffer<256>, 64>;
+    Processor proc;
+
+    std::atomic<int> processed{0};
+    proc.start([&](const auto&) {
+        processed.fetch_add(1);
+    });
+
+    SECTION("submit rejects message exceeding MaxSize") {
+        std::string oversized(257, 'X');
+        REQUIRE_FALSE(proc.submit(
+            std::span<const char>(oversized.data(), oversized.size())));
+
+        // Give background thread time to process anything that leaked through
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        REQUIRE(processed.load() == 0);
+    }
+
+    SECTION("submit accepts message exactly at MaxSize") {
+        std::string exact(256, 'Y');
+        REQUIRE(proc.submit(
+            std::span<const char>(exact.data(), exact.size())));
+
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (processed.load() < 1 && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        REQUIRE(processed.load() == 1);
+    }
+
+    SECTION("submit_blocking rejects oversized message") {
+        std::string oversized(300, 'Z');
+        REQUIRE_FALSE(proc.submit_blocking(
+            std::span<const char>(oversized.data(), oversized.size())));
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        REQUIRE(processed.load() == 0);
+    }
+
+    SECTION("mixed: oversized rejected, valid delivered") {
+        std::string oversized(500, 'A');
+        std::string valid = "valid_message";
+
+        REQUIRE_FALSE(proc.submit(
+            std::span<const char>(oversized.data(), oversized.size())));
+        REQUIRE(proc.submit(
+            std::span<const char>(valid.data(), valid.size())));
+
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (processed.load() < 1 && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        // Only the valid message was processed
+        REQUIRE(processed.load() == 1);
+    }
+
+    proc.stop();
+}
+
+TEST_CASE("DeferredProcessor publish_slot rejects truncated buffer", "[utils][deferred][regression]") {
+    using Processor = DeferredProcessor<DeferredMessageBuffer<256>, 64>;
+    Processor proc;
+
+    std::atomic<int> processed{0};
+    proc.start([&](const auto&) {
+        processed.fetch_add(1);
+    });
+
+    SECTION("oversized via slot path is rejected") {
+        auto* slot = proc.try_reserve_slot();
+        REQUIRE(slot != nullptr);
+
+        std::string oversized(300, 'W');
+        slot->set(std::span<const char>(oversized.data(), oversized.size()), 1);
+        REQUIRE_FALSE(proc.publish_slot());
+
+        std::this_thread::sleep_for(std::chrono::milliseconds(50));
+        REQUIRE(processed.load() == 0);
+    }
+
+    SECTION("valid via slot path is accepted") {
+        auto* slot = proc.try_reserve_slot();
+        REQUIRE(slot != nullptr);
+
+        std::string valid = "slot_message";
+        slot->set(std::span<const char>(valid.data(), valid.size()), 2);
+        REQUIRE(proc.publish_slot());
+
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (processed.load() < 1 && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        REQUIRE(processed.load() == 1);
+    }
+
+    SECTION("slot is released after truncation rejection") {
+        auto* slot = proc.try_reserve_slot();
+        REQUIRE(slot != nullptr);
+
+        std::string oversized(400, 'Q');
+        slot->set(std::span<const char>(oversized.data(), oversized.size()), 3);
+        REQUIRE_FALSE(proc.publish_slot());
+
+        // Slot should be available again after rejection
+        auto* slot2 = proc.try_reserve_slot();
+        REQUIRE(slot2 != nullptr);
+
+        std::string valid = "after_reject";
+        slot2->set(std::span<const char>(valid.data(), valid.size()), 4);
+        REQUIRE(proc.publish_slot());
+
+        auto deadline = std::chrono::steady_clock::now() + std::chrono::seconds(2);
+        while (processed.load() < 1 && std::chrono::steady_clock::now() < deadline) {
+            std::this_thread::sleep_for(std::chrono::milliseconds(1));
+        }
+        REQUIRE(processed.load() == 1);
+    }
+
+    proc.stop();
 }
 
 // ============================================================================
