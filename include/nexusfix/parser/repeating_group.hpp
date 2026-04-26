@@ -89,6 +89,14 @@ public:
         }
 
         size_t start = current_pos_;
+
+        // Phantom entry: current position is at or past end of data
+        if (start >= data_.size()) [[unlikely]] {
+            count_mismatch_ = true;
+            ++current_index_;
+            return Entry{{}, 0, 0};
+        }
+
         size_t end = find_next_entry_start();
 
         Entry entry{data_.subspan(start, end - start), start, end};
@@ -106,7 +114,23 @@ public:
         return current_index_;
     }
 
+    [[nodiscard]] bool count_mismatch() noexcept {
+        ensure_actual_count();
+        return count_mismatch_;
+    }
+
+    [[nodiscard]] size_t actual_count() noexcept {
+        ensure_actual_count();
+        return actual_count_;
+    }
+
 private:
+    void ensure_actual_count() noexcept {
+        if (actual_counted_) [[likely]] return;
+        actual_counted_ = true;
+        count_actual_delimiters();
+    }
+
     void find_first_entry() noexcept {
         // Find the first occurrence of the delimiter tag
         current_pos_ = find_tag_position(0, delimiter_tag_);
@@ -193,9 +217,25 @@ private:
         return data_.size();
     }
 
+    void count_actual_delimiters() noexcept {
+        actual_count_ = 0;
+        size_t pos = 0;
+        while (pos < data_.size()) {
+            size_t found = find_tag_position(pos, delimiter_tag_);
+            if (found >= data_.size()) break;
+            ++actual_count_;
+            // Advance past this tag
+            pos = found + 1;
+        }
+        count_mismatch_ = (actual_count_ != total_count_);
+    }
+
     std::span<const char> data_{};
     int delimiter_tag_{0};
     size_t total_count_{0};
+    size_t actual_count_{0};
+    bool count_mismatch_{false};
+    bool actual_counted_{false};
     size_t current_index_{0};
     size_t current_pos_{0};
 };
@@ -283,6 +323,14 @@ public:
         return iter_.count();
     }
 
+    [[nodiscard]] bool count_mismatch() noexcept {
+        return iter_.count_mismatch();
+    }
+
+    [[nodiscard]] size_t actual_count() noexcept {
+        return iter_.actual_count();
+    }
+
 private:
     RepeatingGroupIterator iter_;
 };
@@ -311,6 +359,14 @@ public:
 
     [[nodiscard]] size_t count() const noexcept {
         return iter_.count();
+    }
+
+    [[nodiscard]] bool count_mismatch() noexcept {
+        return iter_.count_mismatch();
+    }
+
+    [[nodiscard]] size_t actual_count() noexcept {
+        return iter_.actual_count();
     }
 
 private:

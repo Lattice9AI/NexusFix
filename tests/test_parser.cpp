@@ -1198,6 +1198,114 @@ TEST_CASE("parse_md_entry helper", "[parser][repeating_group][regression]") {
 }
 
 // ============================================================================
+// Repeating Group Count Mismatch Tests (TICKET_469_10)
+// ============================================================================
+
+TEST_CASE("RepeatingGroupIterator count mismatch detection",
+          "[parser][repeating_group][count_mismatch][regression]") {
+    using namespace nfx::parser;
+
+    SECTION("Declared > actual (phantom entries) - count=3 with 2 delimiters") {
+        // Two MD entries but declared count is 3
+        std::string data =
+            "269=0\x01" "270=150.50\x01" "271=1000\x01"
+            "269=1\x01" "270=151.00\x01" "271=2000\x01";
+        RepeatingGroupIterator iter{
+            std::span<const char>{data.data(), data.size()},
+            tag::MDEntryType::value, 3};
+
+        REQUIRE(iter.count_mismatch());
+        REQUIRE(iter.actual_count() == 2);
+
+        // First two entries are valid
+        auto e1 = iter.next();
+        REQUIRE(e1.data.size() > 0);
+        REQUIRE(e1.get_char(tag::MDEntryType::value) == '0');
+
+        auto e2 = iter.next();
+        REQUIRE(e2.data.size() > 0);
+        REQUIRE(e2.get_char(tag::MDEntryType::value) == '1');
+
+        // Third entry is phantom - should return empty
+        auto e3 = iter.next();
+        REQUIRE(e3.data.empty());
+    }
+
+    SECTION("Declared < actual (excess entries) - count=1 with 2 delimiters") {
+        // Two MD entries but declared count is 1
+        std::string data =
+            "269=0\x01" "270=150.50\x01" "271=1000\x01"
+            "269=1\x01" "270=151.00\x01" "271=2000\x01";
+        RepeatingGroupIterator iter{
+            std::span<const char>{data.data(), data.size()},
+            tag::MDEntryType::value, 1};
+
+        REQUIRE(iter.count_mismatch());
+        REQUIRE(iter.actual_count() == 2);
+
+        // Only 1 entry iterated (declared count)
+        REQUIRE(iter.has_next());
+        auto e1 = iter.next();
+        REQUIRE(e1.data.size() > 0);
+
+        // No more entries despite actual having 2
+        REQUIRE(!iter.has_next());
+    }
+
+    SECTION("Declared == 0 with delimiters present") {
+        std::string data =
+            "269=0\x01" "270=150.50\x01";
+        RepeatingGroupIterator iter{
+            std::span<const char>{data.data(), data.size()},
+            tag::MDEntryType::value, 0};
+
+        REQUIRE(iter.count_mismatch());
+        REQUIRE(iter.actual_count() == 1);
+        REQUIRE(!iter.has_next());
+    }
+
+    SECTION("Matching count (no mismatch)") {
+        std::string data =
+            "269=0\x01" "270=150.50\x01" "271=1000\x01"
+            "269=1\x01" "270=151.00\x01" "271=2000\x01";
+        RepeatingGroupIterator iter{
+            std::span<const char>{data.data(), data.size()},
+            tag::MDEntryType::value, 2};
+
+        REQUIRE(!iter.count_mismatch());
+        REQUIRE(iter.actual_count() == 2);
+
+        auto e1 = iter.next();
+        REQUIRE(e1.data.size() > 0);
+        auto e2 = iter.next();
+        REQUIRE(e2.data.size() > 0);
+        REQUIRE(!iter.has_next());
+    }
+
+    SECTION("MDEntryIterator forwards count_mismatch") {
+        std::string data =
+            "269=0\x01" "270=150.50\x01"
+            "269=1\x01" "270=151.00\x01";
+        MDEntryIterator iter{
+            std::span<const char>{data.data(), data.size()}, 3};
+
+        REQUIRE(iter.count_mismatch());
+        REQUIRE(iter.actual_count() == 2);
+    }
+
+    SECTION("RelatedSymIterator forwards count_mismatch") {
+        std::string data =
+            "55=AAPL\x01" "48=US0378331005\x01"
+            "55=MSFT\x01" "48=US5949181045\x01";
+        RelatedSymIterator iter{
+            std::span<const char>{data.data(), data.size()}, 1};
+
+        REQUIRE(iter.count_mismatch());
+        REQUIRE(iter.actual_count() == 2);
+    }
+}
+
+// ============================================================================
 // BodyLength Validation Tests (TICKET_469_1)
 // ============================================================================
 
