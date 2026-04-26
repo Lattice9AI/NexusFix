@@ -140,6 +140,7 @@ jobs:
             '*/benchmarks/*' \
             '*/examples/*' \
             '*/_deps/*' \
+            --ignore-errors unused \
             --output-file coverage.info
           lcov --list coverage.info
 
