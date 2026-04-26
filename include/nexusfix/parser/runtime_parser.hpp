@@ -339,8 +339,22 @@ public:
         bool in_group = false;
         FieldIterator iter{data};
         while (iter.has_next()) [[likely]] {
+            size_t pos_before = iter.position();
             FieldView field = iter.next();
-            if (!field.is_valid()) [[unlikely]] break;
+            if (!field.is_valid()) [[unlikely]] {
+                // Determine error: inspect the byte at the position where
+                // parsing failed to distinguish tag vs format errors.
+                const char* ptr = data.data();
+                char c = ptr[pos_before];
+                if (c >= '0' && c <= '9') {
+                    // Tag started with a digit but no '=' was found
+                    return std::unexpected{ParseError{
+                        ParseErrorCode::InvalidFieldFormat, 0, pos_before}};
+                }
+                // Non-digit at tag start position
+                return std::unexpected{ParseError{
+                    ParseErrorCode::InvalidTagNumber, 0, pos_before}};
+            }
 
             if constexpr (StrictMode) {
                 const bool is_count_tag = tag::is_group_count_tag(field.tag);

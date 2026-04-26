@@ -1363,3 +1363,158 @@ TEST_CASE("StrictIndexedParser duplicate tag detection", "[parser][edge-case][st
         REQUIRE(r->get_string(55) == "MSFT");
     }
 }
+
+// ============================================================================
+// Embedded SOH / Field Edge Cases (TICKET_469_3)
+// ============================================================================
+
+TEST_CASE("Embedded SOH truncates field value", "[parser][edge-case]") {
+    SECTION("FieldIterator truncates value at embedded SOH") {
+        // 55=AA<SOH>PL<SOH> - the embedded SOH splits this into two fields:
+        // field 55="AA" and a malformed field "PL" (no '=' found)
+        std::string data = "55=AA\x01" "PL\x01";
+        FieldIterator iter{std::span<const char>{data.data(), data.size()}};
+
+        auto f1 = iter.next();
+        REQUIRE(f1.tag == 55);
+        REQUIRE(f1.as_string() == "AA");  // Truncated at first SOH
+
+        // "PL" has no '=', so next() returns invalid FieldView
+        auto f2 = iter.next();
+        REQUIRE(!f2.is_valid());
+    }
+
+    SECTION("IndexedParser rejects message with embedded SOH creating malformed field") {
+        // "58=hello\x01world\x01" - the embedded SOH splits this into:
+        // field 58="hello" and a malformed residue "world" (no '=' found).
+        // The residue starts with 'w' (non-digit), so FieldIterator reports
+        // InvalidTagNumber via the IndexedParser error path.
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "58=hello\x01" "world\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!r.has_value());
+        REQUIRE(r.error().code == ParseErrorCode::InvalidTagNumber);
+    }
+
+    SECTION("ParsedMessage rejects message with embedded SOH creating malformed field") {
+        // ParsedMessage uses SIMD to find '=' first, so "world" (no '=')
+        // is reported as InvalidFieldFormat.
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "58=hello\x01" "world\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = ParsedMessage::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!r.has_value());
+        REQUIRE(r.error().code == ParseErrorCode::InvalidFieldFormat);
+    }
+}
+
+TEST_CASE("Empty field value (SOH immediately after equals)", "[parser][edge-case]") {
+    SECTION("FieldIterator returns empty string for tag=SOH") {
+        // 58=<SOH> - value is empty
+        std::string data = "58=\x01";
+        FieldIterator iter{std::span<const char>{data.data(), data.size()}};
+
+        auto f = iter.next();
+        REQUIRE(f.tag == 58);
+        REQUIRE(f.as_string() == "");
+        REQUIRE(f.is_empty());
+        REQUIRE(f.size() == 0);
+    }
+
+    SECTION("IndexedParser stores empty value") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "58=\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(r.has_value());
+        REQUIRE(r->has_field(58));
+        REQUIRE(r->get_string(58) == "");
+    }
+
+    SECTION("ParsedMessage stores empty value") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "58=\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = ParsedMessage::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(r.has_value());
+        REQUIRE(r->get_string(58) == "");
+    }
+}
+
+TEST_CASE("Non-ASCII bytes in field values", "[parser][edge-case]") {
+    SECTION("FieldIterator accepts high bytes (0x80-0xFF) in values") {
+        // Value contains bytes 0x80, 0xC0, 0xFF
+        std::string data = "58=\x80\xC0\xFF\x01";
+        FieldIterator iter{std::span<const char>{data.data(), data.size()}};
+
+        auto f = iter.next();
+        REQUIRE(f.tag == 58);
+        REQUIRE(f.size() == 3);
+        REQUIRE(static_cast<uint8_t>(f.value[0]) == 0x80);
+        REQUIRE(static_cast<uint8_t>(f.value[1]) == 0xC0);
+        REQUIRE(static_cast<uint8_t>(f.value[2]) == 0xFF);
+    }
+
+    SECTION("Non-ASCII bytes do not terminate field scanning") {
+        // Ensure that bytes like 0x00 (NUL) don't terminate the value scan.
+        // Only SOH (0x01) is the delimiter.
+        const char raw[] = {'5', '8', '=', 'A', '\x00', 'B', '\x02', 'C', '\x01'};
+        FieldIterator iter{std::span<const char>{raw, sizeof(raw)}};
+
+        auto f = iter.next();
+        REQUIRE(f.tag == 58);
+        // Value should be everything from 'A' to 'C' (5 bytes: A, 0x00, B, 0x02, C)
+        REQUIRE(f.size() == 5);
+    }
+}
+
+TEST_CASE("Non-digit characters in tag number", "[parser][edge-case]") {
+    SECTION("FieldIterator rejects tag with letters") {
+        std::string data = "5X=value\x01";
+        FieldIterator iter{std::span<const char>{data.data(), data.size()}};
+
+        auto f = iter.next();
+        REQUIRE(!f.is_valid());  // Invalid tag
+    }
+
+    SECTION("FieldIterator rejects tag starting with letter") {
+        std::string data = "A5=value\x01";
+        FieldIterator iter{std::span<const char>{data.data(), data.size()}};
+
+        auto f = iter.next();
+        REQUIRE(!f.is_valid());
+    }
+
+    SECTION("FieldIterator rejects tag with special characters") {
+        std::string data = "5.5=value\x01";
+        FieldIterator iter{std::span<const char>{data.data(), data.size()}};
+
+        auto f = iter.next();
+        REQUIRE(!f.is_valid());
+    }
+
+    SECTION("FieldIterator rejects tag with negative sign") {
+        std::string data = "-1=value\x01";
+        FieldIterator iter{std::span<const char>{data.data(), data.size()}};
+
+        auto f = iter.next();
+        REQUIRE(!f.is_valid());
+    }
+}

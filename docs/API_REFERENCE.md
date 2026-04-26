@@ -517,6 +517,39 @@ int main() {
 
 ---
 
+## Edge Cases
+
+### SOH Truncation in Field Values
+
+FIX uses SOH (0x01) as the sole field delimiter. There is no escape mechanism. If a field value contains an embedded SOH byte, the parser stops at that byte and returns the truncated value. This is correct FIX protocol behavior per the FPL spec.
+
+```cpp
+// If a sender erroneously sends "55=AA<SOH>PL<SOH>",
+// NexusFIX parses tag 55 as "AA", not "AAPL".
+auto field = parser.get_string(55);  // Returns "AA"
+```
+
+For binary data that may contain SOH, the FIX protocol provides the RawData mechanism: tag 95 (RawDataLength) specifies the byte count, then tag 96 (RawData) carries the raw payload. NexusFIX does not currently implement RawData length-prefixed framing; tag 96 values are delimited by SOH like any other field. Avoid sending binary payloads that contain embedded SOH bytes until RawData support is added.
+
+### Empty Field Values
+
+A field with no value (tag immediately followed by SOH, e.g. `58=<SOH>`) parses as an empty string. The field exists in the message and `has_field()` returns true, but the value is empty.
+
+```cpp
+auto text = parser.get_string(58);  // Returns ""
+parser.has_field(58);               // Returns true
+```
+
+### Non-ASCII Bytes in String Fields
+
+String field values may contain any byte except SOH (0x01). Bytes in the 0x80-0xFF range, NUL (0x00), and other control characters are accepted and preserved. Only SOH terminates a field value.
+
+### Duplicate Tags
+
+By default, `IndexedParser` uses a last-wins policy for duplicate tags (tag < 512 overwrites in the flat array), while `ParsedMessage` uses first-wins (linear scan returns the first match). For strict duplicate rejection, use `StrictIndexedParser`, which returns `ParseErrorCode::DuplicateTag` when a non-repeating-group tag appears more than once.
+
+---
+
 ## Performance
 
 | Operation | Latency |
