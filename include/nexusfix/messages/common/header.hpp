@@ -86,6 +86,9 @@ public:
         return std::span<const char>{buffer_.data(), pos_};
     }
 
+    /// Check if any data was dropped due to buffer overflow
+    [[nodiscard]] constexpr bool truncated() const noexcept { return truncated_; }
+
     /// Get current size
     [[nodiscard]] size_t size() const noexcept { return pos_; }
 
@@ -95,6 +98,8 @@ public:
     /// Update body length value in buffer
     void update_body_length(size_t body_len) noexcept {
         if (body_length_pos_ == 0) return;
+        // Placeholder "9=000000" needs positions [pos_+2..pos_+7] within buffer
+        if (body_length_pos_ + 8 > MAX_HEADER_SIZE) return;
 
         // Format as 6-digit number
         size_t pos = body_length_pos_ + 2;  // Skip "9="
@@ -108,6 +113,7 @@ public:
     void reset() noexcept {
         pos_ = 0;
         body_length_pos_ = 0;
+        truncated_ = false;
     }
 
 private:
@@ -115,6 +121,8 @@ private:
         for (char c : sv) {
             if (pos_ < MAX_HEADER_SIZE) {
                 buffer_[pos_++] = c;
+            } else {
+                truncated_ = true;
             }
         }
     }
@@ -122,6 +130,8 @@ private:
     void append_soh() noexcept {
         if (pos_ < MAX_HEADER_SIZE) {
             buffer_[pos_++] = fix::SOH;
+        } else {
+            truncated_ = true;
         }
     }
 
@@ -138,11 +148,17 @@ private:
         for (int i = tag_len - 1; i >= 0; --i) {
             if (pos_ < MAX_HEADER_SIZE) {
                 buffer_[pos_++] = tag_buf[i];
+            } else {
+                truncated_ = true;
             }
         }
 
         // Append '='
-        if (pos_ < MAX_HEADER_SIZE) buffer_[pos_++] = '=';
+        if (pos_ < MAX_HEADER_SIZE) {
+            buffer_[pos_++] = '=';
+        } else {
+            truncated_ = true;
+        }
 
         // Append value
         append_raw(value);
@@ -173,6 +189,7 @@ private:
     std::array<char, MAX_HEADER_SIZE> buffer_;
     size_t pos_;
     size_t body_length_pos_{0};
+    bool truncated_{false};
 };
 
 // ============================================================================

@@ -317,3 +317,182 @@ TEST_CASE("MessageAssembler operations", "[messages][assembler][regression]") {
         REQUIRE(sv.find("49=A") == std::string_view::npos);
     }
 }
+
+// ============================================================================
+// HeaderBuilder Overflow / Truncation Tests
+// ============================================================================
+
+TEST_CASE("HeaderBuilder overflow sets truncated flag", "[messages][header][regression]") {
+    SECTION("default constructed is not truncated") {
+        HeaderBuilder hdr;
+        REQUIRE_FALSE(hdr.truncated());
+    }
+
+    SECTION("exactly full buffer does not truncate") {
+        HeaderBuilder hdr;
+        // MAX_HEADER_SIZE is 256. Fill with single-char raw appends via
+        // append_field. Use a repeating small field to fill precisely.
+        // Each call to begin_string("X") writes "8=X\x01" = 4 bytes.
+        // 256 / 4 = 64 calls fills exactly 256 bytes.
+        for (int i = 0; i < 64; ++i) {
+            hdr.begin_string("X");
+        }
+        REQUIRE(hdr.size() == HeaderBuilder::MAX_HEADER_SIZE);
+        REQUIRE_FALSE(hdr.truncated());
+    }
+
+    SECTION("one byte over sets truncated") {
+        HeaderBuilder hdr;
+        // Fill to exactly 256 bytes
+        for (int i = 0; i < 64; ++i) {
+            hdr.begin_string("X");
+        }
+        REQUIRE(hdr.size() == HeaderBuilder::MAX_HEADER_SIZE);
+        REQUIRE_FALSE(hdr.truncated());
+
+        // One more field triggers truncation
+        hdr.begin_string("X");
+        REQUIRE(hdr.truncated());
+        REQUIRE(hdr.size() == HeaderBuilder::MAX_HEADER_SIZE);
+    }
+
+    SECTION("reset clears truncated flag") {
+        HeaderBuilder hdr;
+        // Trigger truncation
+        for (int i = 0; i < 65; ++i) {
+            hdr.begin_string("X");
+        }
+        REQUIRE(hdr.truncated());
+
+        hdr.reset();
+        REQUIRE_FALSE(hdr.truncated());
+        REQUIRE(hdr.size() == 0);
+    }
+
+    SECTION("update_body_length is safe when placeholder was truncated") {
+        HeaderBuilder hdr;
+        // Fill buffer so that body_length_placeholder starts near the end.
+        // Each begin_string("X") = "8=X\x01" = 4 bytes.
+        // 60 calls = 240 bytes, leaving 16 bytes.
+        for (int i = 0; i < 60; ++i) {
+            hdr.begin_string("X");
+        }
+        REQUIRE(hdr.size() == 240);
+
+        // body_length_placeholder writes "9=000000\x01" = 9 bytes.
+        // 240 + 9 = 249, fits. But let's push further to force partial write.
+        // 62 calls = 248 bytes. Placeholder needs 9 bytes: 248+9=257 > 256.
+        hdr.reset();
+        for (int i = 0; i < 62; ++i) {
+            hdr.begin_string("X");
+        }
+        REQUIRE(hdr.size() == 248);
+        hdr.body_length_placeholder();
+        // Placeholder started at pos 248, only 8 bytes fit (248..255).
+        // The 9th byte (SOH) was truncated.
+        REQUIRE(hdr.truncated());
+
+        // update_body_length must not write OOB.
+        // body_length_pos_ = 248, needs positions [250..255] for the 6 digits.
+        // 248 + 8 = 256 = MAX_HEADER_SIZE, so the guard passes and write is safe.
+        hdr.update_body_length(42);
+        // Verify the digits were written (positions 250..255 are in-bounds)
+        auto data = hdr.data();
+        REQUIRE(data.size() == HeaderBuilder::MAX_HEADER_SIZE);
+
+        // Now test the case where placeholder itself is mostly out of bounds.
+        hdr.reset();
+        // 63 calls = 252 bytes. Placeholder at 252: only 4 bytes fit.
+        // 252 + 8 = 260 > 256, guard blocks the write-back.
+        for (int i = 0; i < 63; ++i) {
+            hdr.begin_string("X");
+        }
+        REQUIRE(hdr.size() == 252);
+        hdr.body_length_placeholder();
+        REQUIRE(hdr.truncated());
+        // This must be a no-op (guard: 252 + 8 = 260 > 256)
+        hdr.update_body_length(99);
+        // Buffer should not have been corrupted - size stays at MAX
+        REQUIRE(hdr.size() == HeaderBuilder::MAX_HEADER_SIZE);
+    }
+}
+
+// ============================================================================
+// MessageAssembler Overflow / Truncation Tests
+// ============================================================================
+
+TEST_CASE("MessageAssembler overflow sets truncated flag", "[messages][assembler][regression]") {
+    SECTION("default constructed is not truncated") {
+        MessageAssembler asm_;
+        REQUIRE_FALSE(asm_.truncated());
+    }
+
+    SECTION("normal message is not truncated") {
+        MessageAssembler asm_;
+        auto msg = asm_.start()
+            .field(tag::MsgType::value, '0')
+            .field(tag::SenderCompID::value, "C")
+            .field(tag::TargetCompID::value, "S")
+            .field(tag::MsgSeqNum::value, static_cast<int64_t>(1))
+            .field(tag::SendingTime::value, "20231215")
+            .finish();
+
+        REQUIRE_FALSE(asm_.truncated());
+        REQUIRE(msg.size() > 0);
+    }
+
+    SECTION("overflow sets truncated flag") {
+        MessageAssembler asm_;
+        asm_.start();
+        // MAX_MESSAGE_SIZE is 4096. Fill with large field values to exceed it.
+        // A 200-char value + tag overhead ~ 206 bytes per field. 20 fields = ~4120.
+        std::string big_value(200, 'A');
+        for (int i = 0; i < 21; ++i) {
+            asm_.field(58, big_value);  // tag 58 = Text
+        }
+        REQUIRE(asm_.truncated());
+        REQUIRE(asm_.data().size() == MessageAssembler::MAX_MESSAGE_SIZE);
+    }
+
+    SECTION("reset clears truncated flag") {
+        MessageAssembler asm_;
+        asm_.start();
+        std::string big_value(200, 'A');
+        for (int i = 0; i < 21; ++i) {
+            asm_.field(58, big_value);
+        }
+        REQUIRE(asm_.truncated());
+
+        asm_.reset();
+        REQUIRE_FALSE(asm_.truncated());
+    }
+
+    SECTION("start after truncation recovers for next message") {
+        MessageAssembler asm_;
+
+        // First message: trigger truncation
+        asm_.start();
+        std::string big_value(200, 'A');
+        for (int i = 0; i < 21; ++i) {
+            asm_.field(58, big_value);
+        }
+        REQUIRE(asm_.truncated());
+
+        // Second message: start() must clear truncated so normal messages work
+        auto msg = asm_.start()
+            .field(tag::MsgType::value, '0')
+            .field(tag::SenderCompID::value, "C")
+            .field(tag::TargetCompID::value, "S")
+            .field(tag::MsgSeqNum::value, static_cast<int64_t>(1))
+            .field(tag::SendingTime::value, "20231215")
+            .finish();
+
+        REQUIRE_FALSE(asm_.truncated());
+        REQUIRE(msg.size() > 0);
+
+        // Verify the message is well-formed
+        std::string_view sv{msg.data(), msg.size()};
+        REQUIRE(sv.find("8=FIX.4.4") != std::string_view::npos);
+        REQUIRE(sv.find("35=0") != std::string_view::npos);
+    }
+}

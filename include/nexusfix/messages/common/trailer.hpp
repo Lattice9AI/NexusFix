@@ -167,6 +167,7 @@ public:
     /// Start building a new message
     MessageAssembler& start(std::string_view begin_string = fix::FIX_4_4) noexcept {
         pos_ = 0;
+        truncated_ = false;
         append_field(tag::BeginString::value, begin_string);
         body_length_pos_ = pos_;
         append_raw("9=000000");  // Placeholder
@@ -224,16 +225,21 @@ public:
         return field(tag_num, std::string_view{buf, static_cast<size_t>(len)});
     }
 
+    /// Check if any data was dropped due to buffer overflow
+    [[nodiscard]] constexpr bool truncated() const noexcept { return truncated_; }
+
     /// Finalize message (updates body length and adds checksum)
     [[nodiscard]] std::span<const char> finish() noexcept {
         // Calculate body length (from after 9=XXXXXX\x01 to before 10=)
         size_t body_length = pos_ - body_start_;
 
-        // Update body length field
-        size_t len_pos = body_length_pos_ + 2;  // After "9="
-        for (int i = 5; i >= 0; --i) {
-            buffer_[len_pos + i] = '0' + (body_length % 10);
-            body_length /= 10;
+        // Update body length field only if placeholder fully fits
+        if (body_length_pos_ + 8 <= MAX_MESSAGE_SIZE) {
+            size_t len_pos = body_length_pos_ + 2;  // After "9="
+            for (int i = 5; i >= 0; --i) {
+                buffer_[len_pos + i] = '0' + (body_length % 10);
+                body_length /= 10;
+            }
         }
 
         // Calculate checksum (everything before trailer)
@@ -256,6 +262,7 @@ public:
         pos_ = 0;
         body_length_pos_ = 0;
         body_start_ = 0;
+        truncated_ = false;
     }
 
 private:
@@ -263,6 +270,8 @@ private:
         for (char c : sv) {
             if (pos_ < MAX_MESSAGE_SIZE) {
                 buffer_[pos_++] = c;
+            } else {
+                truncated_ = true;
             }
         }
     }
@@ -270,6 +279,8 @@ private:
     void append_soh() noexcept {
         if (pos_ < MAX_MESSAGE_SIZE) {
             buffer_[pos_++] = fix::SOH;
+        } else {
+            truncated_ = true;
         }
     }
 
@@ -285,10 +296,16 @@ private:
         for (int i = tag_len - 1; i >= 0; --i) {
             if (pos_ < MAX_MESSAGE_SIZE) {
                 buffer_[pos_++] = tag_buf[i];
+            } else {
+                truncated_ = true;
             }
         }
 
-        if (pos_ < MAX_MESSAGE_SIZE) buffer_[pos_++] = '=';
+        if (pos_ < MAX_MESSAGE_SIZE) {
+            buffer_[pos_++] = '=';
+        } else {
+            truncated_ = true;
+        }
         append_raw(value);
         append_soh();
     }
@@ -301,6 +318,7 @@ private:
     size_t pos_;
     size_t body_length_pos_{0};
     size_t body_start_{0};
+    bool truncated_{false};
 };
 
 } // namespace nfx

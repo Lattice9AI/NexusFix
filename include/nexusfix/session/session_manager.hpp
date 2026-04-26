@@ -566,6 +566,9 @@ private:
     bool send_message(std::span<const char> msg) noexcept {
         if (!callbacks_.on_send) return false;
 
+        // Reject truncated messages to prevent sending malformed FIX data
+        if (assembler_.truncated()) return false;
+
         // Store message for potential resend (before actual send)
         if (message_store_) {
             // Get sequence number from message for storage key
