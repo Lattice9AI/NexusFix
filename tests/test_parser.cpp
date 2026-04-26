@@ -1535,6 +1535,71 @@ TEST_CASE("Embedded SOH truncates field value", "[parser][edge-case]") {
     }
 }
 
+TEST_CASE("Cross-parser malformed field rejection (TICKET_469_6)", "[parser][malformed]") {
+    // Both ParsedMessage and IndexedParser must reject the same malformed inputs.
+    // Error codes may differ (ParsedMessage uses SIMD find_equals first, while
+    // IndexedParser delegates to FieldIterator digit loop), but both must fail.
+
+    SECTION("BADFIELD without equals - original reproduction") {
+        // "BADFIELD\x01" has no '=' separator. FieldIterator hits 'B' (non-digit)
+        // and reports InvalidTagNumber; ParsedMessage finds no '=' and reports
+        // InvalidFieldFormat.
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "BADFIELD\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto indexed = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!indexed.has_value());
+
+        auto parsed = ParsedMessage::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!parsed.has_value());
+    }
+
+    SECTION("Empty tag - equals as first character") {
+        // "=value\x01" has zero-length tag. FieldIterator produces tag=0 which
+        // fails is_valid() (tag > 0), so IndexedParser rejects it.
+        // ParsedMessage's digit loop is empty (eq_pos == field_start), stores
+        // tag=0 and continues. Both reject the message.
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "=value\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto indexed = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!indexed.has_value());
+
+        auto parsed = ParsedMessage::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!parsed.has_value());
+    }
+
+    SECTION("Non-digit in tag") {
+        // "5X=value\x01" - tag contains non-digit 'X'. FieldIterator reports
+        // InvalidTagNumber at 'X'; ParsedMessage digit loop also catches it.
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "5X=value\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto indexed = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!indexed.has_value());
+        REQUIRE(indexed.error().code == ParseErrorCode::InvalidTagNumber);
+
+        auto parsed = ParsedMessage::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!parsed.has_value());
+        REQUIRE(parsed.error().code == ParseErrorCode::InvalidTagNumber);
+    }
+}
+
 TEST_CASE("Empty field value (SOH immediately after equals)", "[parser][edge-case]") {
     SECTION("FieldIterator returns empty string for tag=SOH") {
         // 58=<SOH> - value is empty

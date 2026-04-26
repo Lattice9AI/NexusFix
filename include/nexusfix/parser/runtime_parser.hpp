@@ -79,6 +79,10 @@ public:
 
             // Parse tag number
             int tag = 0;
+            if (eq_pos == field_start) [[unlikely]] {
+                return std::unexpected{ParseError{
+                    ParseErrorCode::InvalidFieldFormat, 0, field_start}};
+            }
             for (size_t j = field_start; j < eq_pos; ++j) [[likely]] {
                 char c = ptr[j];
                 if (c < '0' || c > '9') [[unlikely]] {
