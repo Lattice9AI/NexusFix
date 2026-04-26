@@ -773,12 +773,16 @@ struct MessageBoundary {
     size_t start;
     size_t end;
     bool complete;
+    bool corrupt;  // Structurally complete but failed validation (e.g. BodyLength mismatch)
 
     constexpr MessageBoundary() noexcept
-        : start{0}, end{0}, complete{false} {}
+        : start{0}, end{0}, complete{false}, corrupt{false} {}
 
     constexpr MessageBoundary(size_t s, size_t e, bool c) noexcept
-        : start{s}, end{e}, complete{c} {}
+        : start{s}, end{e}, complete{c}, corrupt{false} {}
+
+    constexpr MessageBoundary(size_t s, size_t e, bool c, bool x) noexcept
+        : start{s}, end{e}, complete{c}, corrupt{x} {}
 
     [[nodiscard]] constexpr size_t size() const noexcept {
         return complete ? end - start : 0;
@@ -820,6 +824,36 @@ inline MessageBoundary find_message_boundary(
     // Search backwards from reasonable position
     size_t search_end = std::min(msg_start + fix::MAX_MESSAGE_SIZE, data.size());
 
+    // Pre-parse BodyLength (tag 9) once for the current message start.
+    // body_start is the byte after SOH terminating "9=<value>".
+    size_t declared_bl = 0;
+    size_t body_start = 0;
+    bool bl_found = false;
+    for (size_t j = msg_start; j + 3 < search_end; ++j) {
+        if (ptr[j] == fix::SOH &&
+            ptr[j + 1] == '9' &&
+            ptr[j + 2] == '=') [[unlikely]] {
+            size_t k = j + 3;
+            bool has_digit = false;
+            while (k < search_end && ptr[k] >= '0' && ptr[k] <= '9') {
+                declared_bl = declared_bl * 10
+                    + static_cast<size_t>(ptr[k] - '0');
+                has_digit = true;
+                ++k;
+            }
+            if (has_digit && k < search_end && ptr[k] == fix::SOH) {
+                bl_found = true;
+                body_start = k + 1;  // byte after SOH terminating 9=<value>
+            }
+            break;
+        }
+    }
+
+    // Track the first structurally complete 10= candidate that failed
+    // BodyLength validation, so we can report it as the corrupt boundary
+    // if no valid candidate is found.
+    size_t first_corrupt_end = 0;
+
     for (size_t i = msg_start + 20; i + 7 < search_end; ++i) [[likely]] {
         // Look for SOH followed by "10="
         if (ptr[i] == fix::SOH &&
@@ -829,9 +863,27 @@ inline MessageBoundary find_message_boundary(
             // Find the final SOH after checksum value
             size_t checksum_end = find_soh(data, i + 4);
             if (checksum_end < search_end) [[likely]] {
+                if (bl_found) {
+                    // Cross-validate: actual body is [body_start, i] inclusive
+                    // (SOH before 10= is part of body per FIX spec)
+                    size_t actual_bl = i - body_start + 1;
+                    if (declared_bl != actual_bl) {
+                        if (first_corrupt_end == 0) {
+                            first_corrupt_end = checksum_end + 1;
+                        }
+                        continue;  // Try next 10= candidate
+                    }
+                }
                 return MessageBoundary{msg_start, checksum_end + 1, true};
             }
         }
+    }
+
+    // No valid 10= candidate found. If we saw at least one structurally
+    // complete candidate that failed BodyLength, report the first one as
+    // the corrupt boundary so the stream can skip past it.
+    if (first_corrupt_end > 0) {
+        return MessageBoundary{msg_start, first_corrupt_end, false, true};
     }
 
     return MessageBoundary{msg_start, 0, false};  // Incomplete message

@@ -246,6 +246,12 @@ public:
             auto boundary = simd::find_message_boundary(remaining);
 
             if (!boundary.complete) {
+                if (boundary.corrupt) {
+                    // Structurally complete but BodyLength mismatch.
+                    // Skip past the corrupt frame to resynchronize.
+                    consumed += boundary.end;
+                    continue;
+                }
                 break;  // Need more data
             }
 
@@ -257,7 +263,7 @@ public:
                 };
             }
 
-            consumed = boundary.end;
+            consumed += boundary.end;
         }
 
         return consumed;

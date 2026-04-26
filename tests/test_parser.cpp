@@ -474,6 +474,115 @@ TEST_CASE("Message boundary detection", "[parser][simd][regression]") {
         REQUIRE(boundary.start == 0);
         REQUIRE(boundary.end == EXEC_REPORT.size());
     }
+
+    SECTION("Correct BodyLength is accepted") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=5\x01" "52=20231215-10:30:00\x01";
+        std::string msg = build_fix_message(inner);
+        auto boundary = simd::find_message_boundary(
+            std::span<const char>{msg.data(), msg.size()});
+
+        REQUIRE(boundary.complete);
+        REQUIRE(boundary.start == 0);
+        REQUIRE(boundary.end == msg.size());
+    }
+
+    SECTION("BodyLength > actual marks boundary as corrupt") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=5\x01" "52=20231215-10:30:00\x01";
+        std::string msg = build_fix_message_with_bl(inner, 999);
+        auto boundary = simd::find_message_boundary(
+            std::span<const char>{msg.data(), msg.size()});
+
+        REQUIRE(!boundary.complete);
+        REQUIRE(boundary.corrupt);
+        REQUIRE(boundary.end == msg.size());
+    }
+
+    SECTION("BodyLength < actual marks boundary as corrupt") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=5\x01" "52=20231215-10:30:00\x01";
+        std::string msg = build_fix_message_with_bl(inner, 5);
+        auto boundary = simd::find_message_boundary(
+            std::span<const char>{msg.data(), msg.size()});
+
+        REQUIRE(!boundary.complete);
+        REQUIRE(boundary.corrupt);
+        REQUIRE(boundary.end == msg.size());
+    }
+
+    SECTION("Embedded trailer pattern skipped via BodyLength") {
+        // Body contains a fake "\x01 10=999\x01" pattern before the real trailer.
+        // The framing layer should skip the fake one because BodyLength won't match
+        // at that point, and find the real trailer at the correct offset.
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "58=fake\x01" "10=999\x01"
+            "56=TARGET\x01" "34=5\x01" "52=20231215-10:30:00\x01";
+        std::string msg = build_fix_message(inner);
+        auto boundary = simd::find_message_boundary(
+            std::span<const char>{msg.data(), msg.size()});
+
+        REQUIRE(boundary.complete);
+        REQUIRE(boundary.start == 0);
+        REQUIRE(boundary.end == msg.size());
+    }
+}
+
+TEST_CASE("StreamParser skips BodyLength mismatch", "[parser][stream][regression]") {
+    StreamParser parser;
+
+    SECTION("Inflated BodyLength skipped, not queued") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=5\x01" "52=20231215-10:30:00\x01";
+        std::string msg = build_fix_message_with_bl(inner, 999);
+
+        size_t consumed = parser.feed(
+            std::span<const char>{msg.data(), msg.size()});
+
+        REQUIRE(consumed == msg.size());
+        REQUIRE(!parser.has_message());
+    }
+
+    SECTION("Deflated BodyLength skipped, not queued") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=5\x01" "52=20231215-10:30:00\x01";
+        std::string msg = build_fix_message_with_bl(inner, 5);
+
+        size_t consumed = parser.feed(
+            std::span<const char>{msg.data(), msg.size()});
+
+        REQUIRE(consumed == msg.size());
+        REQUIRE(!parser.has_message());
+    }
+
+    SECTION("Corrupt message followed by valid message - stream recovers") {
+        std::string bad_inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=5\x01" "52=20231215-10:30:00\x01";
+        std::string bad_msg = build_fix_message_with_bl(bad_inner, 999);
+
+        std::string good_inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=6\x01" "52=20231215-10:30:01\x01";
+        std::string good_msg = build_fix_message(good_inner);
+
+        std::string stream = bad_msg + good_msg;
+        size_t consumed = parser.feed(
+            std::span<const char>{stream.data(), stream.size()});
+
+        REQUIRE(consumed == stream.size());
+        REQUIRE(parser.has_message());
+
+        auto [start, end] = parser.next_message();
+        REQUIRE(start == bad_msg.size());
+        REQUIRE(end == stream.size());
+        REQUIRE(!parser.has_message());
+    }
 }
 
 // ============================================================================
