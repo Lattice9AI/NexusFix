@@ -521,6 +521,75 @@ template<int TagNum>
     return false;
 }
 
+// ============================================================================
+// Repeating Group Tag Classification
+// ============================================================================
+
+namespace detail {
+
+/// FIX 4.4 group count tags (No* tags that start a repeating group).
+inline constexpr std::array<int, 3> GROUP_COUNT_TAGS = {
+    146,  // NoRelatedSym
+    267,  // NoMDEntryTypes
+    268,  // NoMDEntries
+};
+
+/// Tags that appear as members inside FIX 4.4 repeating groups.
+inline constexpr std::array<int, 14> REPEATING_GROUP_MEMBER_TAGS = {
+    48,   // SecurityID          (RelatedSym)
+    55,   // Symbol              (RelatedSym, MDEntries)
+    207,  // SecurityExchange    (RelatedSym)
+    269,  // MDEntryType         (MDEntries, MDEntryTypes)
+    270,  // MDEntryPx           (MDEntries)
+    271,  // MDEntrySize         (MDEntries)
+    272,  // MDEntryDate         (MDEntries)
+    273,  // MDEntryTime         (MDEntries)
+    276,  // QuoteCondition      (MDEntries)
+    277,  // TradeCondition      (MDEntries)
+    278,  // MDEntryID           (MDEntries)
+    279,  // MDUpdateAction      (MDEntries)
+    290,  // MDEntryPositionNo   (MDEntries)
+    346,  // NumberOfOrders      (MDEntries)
+};
+
+} // namespace detail
+
+/// Is this tag a repeating group count tag (No* tag)?
+[[nodiscard]] inline constexpr bool is_group_count_tag(int tag) noexcept {
+    for (int t : detail::GROUP_COUNT_TAGS) {
+        if (t == tag) return true;
+    }
+    return false;
+}
+
+/// Is this tag a repeating group member (may legally repeat inside a group)?
+[[nodiscard]] inline constexpr bool is_repeating_group_member_tag(int tag) noexcept {
+    for (int t : detail::REPEATING_GROUP_MEMBER_TAGS) {
+        if (t == tag) return true;
+    }
+    return false;
+}
+
+/// Is this tag a repeating group member for the specified group count tag?
+/// This is the contextual check used by the strict parser.
+[[nodiscard]] inline constexpr bool is_repeating_group_member_tag(
+    int group_count_tag,
+    int tag) noexcept
+{
+    switch (group_count_tag) {
+    case 146: // NoRelatedSym
+        return tag == 48 || tag == 55 || tag == 207;
+    case 267: // NoMDEntryTypes
+        return tag == 269;
+    case 268: // NoMDEntries
+        return tag == 55 || tag == 269 || tag == 270 || tag == 271 || tag == 272 ||
+               tag == 273 || tag == 276 || tag == 277 || tag == 278 || tag == 279 ||
+               tag == 290 || tag == 346;
+    default:
+        return false;
+    }
+}
+
 // Static assertions for tag metadata
 static_assert(detail::TagInfo<8>::name == "BeginString");
 static_assert(detail::TagInfo<8>::is_header == true);

@@ -303,16 +303,20 @@ private:
 
 /// Parser with O(1) tag lookup using precomputed offset table
 /// Aligned to cache line boundary for optimal memory access
-class alignas(PARSER_CACHE_LINE_SIZE) IndexedParser {
+///
+/// StrictMode (default false): when enabled, rejects messages with duplicate
+/// non-repeating tags via ParseErrorCode::DuplicateTag.
+template <bool StrictMode = false>
+class alignas(PARSER_CACHE_LINE_SIZE) IndexedParserImpl {
 public:
     static constexpr size_t MAX_TAG = 512;
 
     /// Parse and index all fields for O(1) lookup
     [[nodiscard]] NFX_HOT
-    static ParseResult<IndexedParser> parse(
+    static ParseResult<IndexedParserImpl> parse(
         std::span<const char> data) noexcept
     {
-        IndexedParser parser;
+        IndexedParserImpl parser;
         parser.raw_ = data;
 
         // Parse header
@@ -328,16 +332,36 @@ public:
             return std::unexpected{bl_error};
         }
 
-        // Index all fields
+        // Index all fields.
+        // Track the active repeating group by its count tag so strict duplicate
+        // checking only relaxes inside that specific group context.
+        int active_group_count_tag = 0;
+        bool in_group = false;
         FieldIterator iter{data};
         while (iter.has_next()) [[likely]] {
             FieldView field = iter.next();
             if (!field.is_valid()) [[unlikely]] break;
 
+            if constexpr (StrictMode) {
+                const bool is_count_tag = tag::is_group_count_tag(field.tag);
+                if (in_group && !is_count_tag &&
+                    !tag::is_repeating_group_member_tag(active_group_count_tag, field.tag)) {
+                    in_group = false;
+                    active_group_count_tag = 0;
+                }
+                if (is_count_tag) {
+                    in_group = true;
+                    active_group_count_tag = field.tag;
+                }
+            }
+
             // Store in lookup table (handles routing to flat array or overflow)
-            if (!parser.field_table_.set(field.tag, field.value)) [[unlikely]] {
-                return std::unexpected{ParseError{
-                    ParseErrorCode::OverflowExhausted, field.tag}};
+            bool allow_dup = StrictMode && in_group &&
+                             tag::is_repeating_group_member_tag(
+                                 active_group_count_tag, field.tag);
+            ParseError err = parser.field_table_.set(field.tag, field.value, allow_dup);
+            if (err.code != ParseErrorCode::None) [[unlikely]] {
+                return std::unexpected{err};
             }
         }
 
@@ -443,12 +467,18 @@ public:
     }
 
 private:
-    IndexedParser() noexcept = default;
+    IndexedParserImpl() noexcept = default;
 
     std::span<const char> raw_;
     MessageHeader header_;
-    FieldTable<MAX_TAG> field_table_;
+    FieldTable<MAX_TAG, 8, StrictMode> field_table_;
 };
+
+/// Default IndexedParser (permissive, last-wins for duplicates)
+using IndexedParser = IndexedParserImpl<false>;
+
+/// Strict IndexedParser (rejects duplicate non-repeating tags)
+using StrictIndexedParser = IndexedParserImpl<true>;
 
 // ============================================================================
 // Convenience Functions
@@ -470,6 +500,14 @@ inline ParseResult<IndexedParser> parse_indexed(
     return IndexedParser::parse(data);
 }
 
+/// Parse with O(1) field lookup and strict duplicate tag detection
+[[nodiscard]] NFX_HOT
+inline ParseResult<StrictIndexedParser> parse_indexed_strict(
+    std::span<const char> data) noexcept
+{
+    return StrictIndexedParser::parse(data);
+}
+
 // ============================================================================
 // Static Assertions for Parser Layout
 // ============================================================================
@@ -480,6 +518,9 @@ static_assert(alignof(ParsedMessage) >= PARSER_CACHE_LINE_SIZE,
 
 static_assert(alignof(IndexedParser) >= PARSER_CACHE_LINE_SIZE,
     "IndexedParser must be cache-line aligned for optimal memory access");
+
+static_assert(alignof(StrictIndexedParser) >= PARSER_CACHE_LINE_SIZE,
+    "StrictIndexedParser must be cache-line aligned for optimal memory access");
 
 } // namespace nfx
 

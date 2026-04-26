@@ -182,8 +182,8 @@ TEST_CASE("FieldTable O(1) lookup", "[parser][field_view][regression]") {
     const char* val1 = "AAPL";
     const char* val2 = "100";
 
-    REQUIRE(table.set(55, std::span<const char>{val1, 4}));
-    REQUIRE(table.set(38, std::span<const char>{val2, 3}));
+    REQUIRE(table.set(55, std::span<const char>{val1, 4}).ok());
+    REQUIRE(table.set(38, std::span<const char>{val2, 3}).ok());
 
     SECTION("Lookup existing") {
         REQUIRE(table.has(55));
@@ -1148,5 +1148,218 @@ TEST_CASE("BodyLength validation", "[parser][edge-case][regression]") {
     SECTION("Error message text") {
         REQUIRE(parse_error_message(ParseErrorCode::BodyLengthMismatch)
                 == "BodyLength mismatch");
+    }
+}
+
+// ============================================================================
+// Duplicate Tag Detection Tests (TICKET_469_2)
+// ============================================================================
+
+TEST_CASE("Duplicate tag current behavior", "[parser][edge-case]") {
+    SECTION("IndexedParser duplicate tag (flat, tag < 512) - LAST WINS") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "55=AAPL\x01" "55=MSFT\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(r.has_value());
+        REQUIRE(r->get_string(55) == "MSFT");  // Last wins
+    }
+
+    SECTION("IndexedParser duplicate tag (overflow, tag >= 512) - LAST WINS") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "553=user1\x01" "553=user2\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(r.has_value());
+        // Overflow stores both; get() returns first match (linear scan)
+        // but both entries exist in the overflow array
+        REQUIRE(r->has_field(553));
+    }
+
+    SECTION("IndexedParser triple duplicate - final value wins") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "55=AAPL\x01" "55=MSFT\x01" "55=GOOG\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(r.has_value());
+        REQUIRE(r->get_string(55) == "GOOG");  // Last wins for flat array
+    }
+
+    SECTION("ParsedMessage duplicate tag - FIRST WINS") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "55=AAPL\x01" "55=MSFT\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = ParsedMessage::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(r.has_value());
+        REQUIRE(r->get_string(55) == "AAPL");  // First wins (linear scan)
+    }
+
+    SECTION("Cross-parser inconsistency - same message, different results") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "55=AAPL\x01" "55=MSFT\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto parsed = ParsedMessage::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        auto indexed = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+
+        REQUIRE(parsed.has_value());
+        REQUIRE(indexed.has_value());
+
+        // ParsedMessage returns first, IndexedParser returns last
+        REQUIRE(parsed->get_string(55) == "AAPL");
+        REQUIRE(indexed->get_string(55) == "MSFT");
+        REQUIRE(parsed->get_string(55) != indexed->get_string(55));
+    }
+}
+
+TEST_CASE("StrictIndexedParser duplicate tag detection", "[parser][edge-case][strict]") {
+    SECTION("Rejects duplicate non-repeating tag (flat, tag < 512)") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "11=ORD1\x01" "11=ORD2\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = StrictIndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!r.has_value());
+        REQUIRE(r.error().code == ParseErrorCode::DuplicateTag);
+        REQUIRE(r.error().tag == 11);
+    }
+
+    SECTION("Rejects duplicate tag (overflow, tag >= 512)") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "553=user1\x01" "553=user2\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = StrictIndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!r.has_value());
+        REQUIRE(r.error().code == ParseErrorCode::DuplicateTag);
+        REQUIRE(r.error().tag == 553);
+    }
+
+    SECTION("Accepts message without duplicates") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "55=AAPL\x01" "54=1\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = StrictIndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(r.has_value());
+        REQUIRE(r->get_string(55) == "AAPL");
+        REQUIRE(r->get_char(54) == '1');
+    }
+
+    SECTION("Rejects duplicate group-member tag outside group context (no count tag)") {
+        // NewOrderSingle with duplicate Symbol (55) but NO group count tag
+        // Tag 55 is a group member tag, but without a preceding No* tag
+        // it must still be rejected as a duplicate.
+        std::string inner =
+            "35=D\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "11=ORD1\x01" "55=AAPL\x01" "55=MSFT\x01"
+            "54=1\x01" "38=100\x01" "40=2\x01" "44=150.50\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = StrictIndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!r.has_value());
+        REQUIRE(r.error().code == ParseErrorCode::DuplicateTag);
+        REQUIRE(r.error().tag == 55);
+    }
+
+    SECTION("Rejects duplicate group-member tag after group context ends") {
+        // A repeating group appears first, then a non-member tag ends that
+        // group context. A later duplicate of 55 must still be rejected.
+        std::string inner =
+            "35=D\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "11=ORD1\x01" "268=1\x01"
+            "269=0\x01" "270=150.25\x01" "271=100\x01"
+            "54=1\x01"
+            "55=AAPL\x01" "55=MSFT\x01" "38=100\x01" "40=2\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = StrictIndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!r.has_value());
+        REQUIRE(r.error().code == ParseErrorCode::DuplicateTag);
+        REQUIRE(r.error().tag == 55);
+    }
+
+    SECTION("Accepts repeating group tags (MDEntries with duplicate 269/270/271)") {
+        // Market Data Snapshot: 268=2 followed by two MDEntry groups
+        // Tags 269, 270, 271 each appear twice - legitimate FIX repeating group
+        std::string inner =
+            "35=W\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "262=REQ1\x01" "55=AAPL\x01"
+            "268=2\x01"
+            "269=0\x01" "270=150.25\x01" "271=100\x01"
+            "269=1\x01" "270=150.50\x01" "271=200\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = StrictIndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(r.has_value());
+        REQUIRE(r->get_string(262) == "REQ1");
+        REQUIRE(r->has_field(268));
+        REQUIRE(r->has_field(269));
+    }
+
+    SECTION("Accepts repeating group tags (RelatedSym with duplicate 55/48)") {
+        // Two related symbols: tag 55 appears twice
+        std::string inner =
+            "35=V\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "262=REQ2\x01" "263=1\x01" "264=0\x01"
+            "146=2\x01"
+            "55=AAPL\x01" "48=US0378331005\x01"
+            "55=MSFT\x01" "48=US5949181045\x01"
+            "267=2\x01" "269=0\x01" "269=1\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = StrictIndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(r.has_value());
+        REQUIRE(r->get_string(262) == "REQ2");
+    }
+
+    SECTION("Default IndexedParser still accepts duplicates (backwards compatible)") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=1\x01" "52=20231215-10:30:00\x01"
+            "55=AAPL\x01" "55=MSFT\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto r = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(r.has_value());
+        REQUIRE(r->get_string(55) == "MSFT");
     }
 }

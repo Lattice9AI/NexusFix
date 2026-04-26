@@ -6,6 +6,9 @@
 #include <charconv>
 #include <optional>
 #include <limits>
+#include <bitset>
+#include <variant>
+#include <type_traits>
 
 #include "nexusfix/platform/platform.hpp"
 #include "nexusfix/util/compiler.hpp"
@@ -240,11 +243,15 @@ private:
 /// Fixed-size lookup table for common tags (O(1) access)
 /// Flat array for tags 0..MaxTag-1, inline overflow for tags >= MaxTag.
 /// Aligned to cache line boundary for optimal memory access
+///
+/// StrictMode (default false): when enabled, detects duplicate tags and
+/// returns ParseErrorCode::DuplicateTag from set(). Pass allow_dup=true
+/// for tags inside an active repeating group context (caller responsibility).
 #ifdef _MSC_VER
 #pragma warning(push)
 #pragma warning(disable: 4324)  // structure was padded due to alignment specifier
 #endif
-template <size_t MaxTag = 512, size_t MaxOverflow = 8>
+template <size_t MaxTag = 512, size_t MaxOverflow = 8, bool StrictMode = false>
 class alignas(CACHE_LINE_SIZE) FieldTable {
 public:
     constexpr FieldTable() noexcept {
@@ -254,17 +261,36 @@ public:
     }
 
     /// Set field value
-    /// Returns true if stored, false if overflow exhausted (valid tag >= MaxTag, no room)
-    [[nodiscard]] constexpr bool set(int tag, std::span<const char> value) noexcept {
+    /// Returns ParseError with code None on success, DuplicateTag (strict) or
+    /// OverflowExhausted on failure.
+    /// @param allow_dup When true (e.g. inside repeating group), skip duplicate check
+    [[nodiscard]] constexpr ParseError set(int tag, std::span<const char> value,
+                                           bool allow_dup = false) noexcept {
         if (tag > 0 && static_cast<size_t>(tag) < MaxTag) [[likely]] {
+            if constexpr (StrictMode) {
+                if (!allow_dup && seen_tags_.test(static_cast<size_t>(tag))) {
+                    return ParseError{ParseErrorCode::DuplicateTag, tag};
+                }
+                seen_tags_.set(static_cast<size_t>(tag));
+            }
             entries_[tag] = FieldView{tag, value};
-            return true;
+            return ParseError{};
         }
         if (tag > 0 && overflow_count_ < MaxOverflow) {
+            if constexpr (StrictMode) {
+                if (!allow_dup) {
+                    for (size_t i = 0; i < overflow_count_; ++i) {
+                        if (overflow_[i].tag == tag) {
+                            return ParseError{ParseErrorCode::DuplicateTag, tag};
+                        }
+                    }
+                }
+            }
             overflow_[overflow_count_++] = FieldView{tag, value};
-            return true;
+            return ParseError{};
         }
-        return tag <= 0;  // tag <= 0 is not a real field, not an error
+        if (tag <= 0) return ParseError{};  // tag <= 0 is not a real field, not an error
+        return ParseError{ParseErrorCode::OverflowExhausted, tag};
     }
 
     /// Get field value (O(1) for tags < MaxTag, linear scan for overflow)
@@ -310,20 +336,31 @@ public:
             entry = FieldView{};
         }
         overflow_count_ = 0;
+        if constexpr (StrictMode) {
+            seen_tags_.reset();
+        }
     }
 
 private:
     std::array<FieldView, MaxTag> entries_;
     std::array<FieldView, MaxOverflow> overflow_{};
     size_t overflow_count_{0};
+    [[no_unique_address]] std::conditional_t<StrictMode, std::bitset<MaxTag>, std::monostate> seen_tags_{};
 };
 #ifdef _MSC_VER
 #pragma warning(pop)
 #endif
 
 // Static assertion: FieldTable should be cache-line aligned
-static_assert(alignof(FieldTable<512, 8>) >= CACHE_LINE_SIZE,
+static_assert(alignof(FieldTable<512, 8, false>) >= CACHE_LINE_SIZE,
     "FieldTable must be cache-line aligned for optimal memory access");
+
+static_assert(alignof(FieldTable<512, 8, true>) >= CACHE_LINE_SIZE,
+    "FieldTable (strict) must be cache-line aligned for optimal memory access");
+
+// StrictMode=false must have zero overhead vs original layout
+static_assert(sizeof(FieldTable<512, 8, false>) == sizeof(FieldTable<512, 8>),
+    "Non-strict FieldTable must have no size overhead");
 
 // ============================================================================
 // Utility Functions
