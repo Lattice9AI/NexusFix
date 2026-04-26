@@ -51,6 +51,13 @@ public:
         next_outbound_.store(seq, std::memory_order_relaxed);
     }
 
+    /// Rollback outbound sequence number after a failed send
+    void rollback_outbound() noexcept {
+        uint32_t current = next_outbound_.load(std::memory_order_relaxed);
+        uint32_t prev = (current <= INITIAL_SEQ_NUM) ? MAX_SEQ_NUM : current - 1;
+        next_outbound_.store(prev, std::memory_order_relaxed);
+    }
+
     // ========================================================================
     // Inbound Sequence Numbers
     // ========================================================================

@@ -388,7 +388,7 @@ private:
                 .heart_bt_int(config_.heart_bt_int)
                 .build(assembler_);
 
-            send_message(response);
+            if (!send_message(response)) return;
             transition(SessionEvent::LogonAcknowledged);
             heartbeat_timer_.reset();
 
@@ -415,8 +415,9 @@ private:
                 .sending_time(current_timestamp())
                 .build(assembler_);
 
-            send_message(response);
-            transition(SessionEvent::LogoutSent);
+            if (send_message(response)) {
+                transition(SessionEvent::LogoutSent);
+            }
         }
 
         if (callbacks_.on_logout) {
@@ -442,7 +443,7 @@ private:
             .test_req_id(test_req_id)
             .build(assembler_);
 
-        send_message(response);
+        [[maybe_unused]] bool sent = send_message(response);
     }
 
     void handle_resend_request(const ParsedMessage& msg) noexcept {
@@ -477,6 +478,8 @@ private:
         }
 
         // Fallback: No store or messages not found - send SequenceReset (gap fill)
+        // Uses the requestor's BeginSeqNo, not our outbound counter, so bypass
+        // send_message() which assumes a prior next_outbound() call.
         auto response = fix44::SequenceReset::Builder{}
             .sender_comp_id(config_.sender_comp_id)
             .target_comp_id(config_.target_comp_id)
@@ -486,7 +489,7 @@ private:
             .gap_fill_flag(true)
             .build(assembler_);
 
-        send_message(response);
+        transmit(response);
     }
 
     void handle_sequence_reset(const ParsedMessage& msg) noexcept {
@@ -563,19 +566,13 @@ private:
     // Message Sending
     // ========================================================================
 
-    bool send_message(std::span<const char> msg) noexcept {
+    /// Low-level transport: truncation check, on_send callback, stats.
+    /// Does NOT touch sequence numbers or message store.
+    bool transmit(std::span<const char> msg) noexcept {
         if (!callbacks_.on_send) return false;
 
         // Reject truncated messages to prevent sending malformed FIX data
         if (assembler_.truncated()) return false;
-
-        // Store message for potential resend (before actual send)
-        if (message_store_) {
-            // Get sequence number from message for storage key
-            uint32_t seq_num = sequences_.current_outbound();
-            // Note: store() may fail if pool is full, but we continue to send
-            [[maybe_unused]] bool stored = message_store_->store(seq_num, msg);
-        }
 
         bool sent = callbacks_.on_send(msg);
         if (sent) {
@@ -584,6 +581,26 @@ private:
             stats_.bytes_sent += msg.size();
         }
         return sent;
+    }
+
+    /// Send a message that consumed a sequence number via next_outbound().
+    /// Rolls back the sequence on failure; stores the message on success.
+    bool send_message(std::span<const char> msg) noexcept {
+        if (!transmit(msg)) {
+            sequences_.rollback_outbound();
+            return false;
+        }
+
+        // Store message for potential resend (only after successful send)
+        if (message_store_) {
+            // current_outbound() is N+1 after next_outbound() returned N
+            uint32_t next = sequences_.current_outbound();
+            uint32_t sent_seq = (next <= SequenceManager::INITIAL_SEQ_NUM)
+                ? SequenceManager::MAX_SEQ_NUM : next - 1;
+            // Note: store() may fail if pool is full, but send already succeeded
+            [[maybe_unused]] bool stored = message_store_->store(sent_seq, msg);
+        }
+        return true;
     }
 
     void send_heartbeat(std::string_view test_req_id = "") noexcept {
@@ -595,8 +612,9 @@ private:
             .test_req_id(test_req_id)
             .build(assembler_);
 
-        send_message(msg);
-        ++stats_.heartbeats_sent;
+        if (send_message(msg)) {
+            ++stats_.heartbeats_sent;
+        }
     }
 
     void send_test_request() noexcept {
@@ -613,9 +631,10 @@ private:
             .test_req_id(std::string_view{id_buf, static_cast<size_t>(len)})
             .build(assembler_);
 
-        send_message(msg);
-        heartbeat_timer_.test_request_sent();
-        ++stats_.test_requests_sent;
+        if (send_message(msg)) {
+            heartbeat_timer_.test_request_sent();
+            ++stats_.test_requests_sent;
+        }
     }
 
     // ========================================================================

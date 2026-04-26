@@ -578,6 +578,38 @@ TEST_CASE("SessionId equality and reverse", "[session][identity]") {
 
 namespace {
 
+/// Spy message store that records store() calls for verification
+class SpyMessageStore final : public store::IMessageStore {
+public:
+    struct StoreCall {
+        uint32_t seq_num;
+        std::vector<char> msg;
+    };
+
+    std::vector<StoreCall> store_calls;
+
+    [[nodiscard]] bool store(uint32_t seq_num,
+                             std::span<const char> msg) noexcept override {
+        store_calls.push_back({seq_num, {msg.begin(), msg.end()}});
+        return true;
+    }
+
+    [[nodiscard]] std::optional<std::vector<char>>
+        retrieve(uint32_t) const noexcept override { return std::nullopt; }
+
+    [[nodiscard]] std::vector<std::vector<char>>
+        retrieve_range(uint32_t, uint32_t) const noexcept override { return {}; }
+
+    void set_next_sender_seq_num(uint32_t) noexcept override {}
+    void set_next_target_seq_num(uint32_t) noexcept override {}
+    [[nodiscard]] uint32_t get_next_sender_seq_num() const noexcept override { return 1; }
+    [[nodiscard]] uint32_t get_next_target_seq_num() const noexcept override { return 1; }
+    void reset() noexcept override { store_calls.clear(); }
+    void flush() noexcept override {}
+    [[nodiscard]] std::string_view session_id() const noexcept override { return "SPY"; }
+    [[nodiscard]] Stats stats() const noexcept override { return {}; }
+};
+
 /// Build a valid FIX Logon message (35=A)
 std::string build_logon(std::string_view sender, std::string_view target,
                         uint32_t seq_num, int heart_bt_int = 30) {
@@ -633,6 +665,22 @@ std::string build_test_request(std::string_view sender, std::string_view target,
         .sending_time("20260401-12:00:00.000")
         .test_req_id(test_req_id)
         .build(asm_);
+    return std::string(msg.data(), msg.size());
+}
+
+/// Build a valid FIX ResendRequest message (35=2)
+std::string build_resend_request(std::string_view sender, std::string_view target,
+                                 uint32_t seq_num, uint32_t begin_seq, uint32_t end_seq) {
+    MessageAssembler asm_;
+    auto msg = asm_.start()
+        .field(tag::MsgType::value, msg_type::ResendRequest)
+        .field(tag::SenderCompID::value, sender)
+        .field(tag::TargetCompID::value, target)
+        .field(tag::MsgSeqNum::value, static_cast<int64_t>(seq_num))
+        .field(tag::SendingTime::value, "20260401-12:00:00.000")
+        .field(7, static_cast<int64_t>(begin_seq))   // BeginSeqNo
+        .field(16, static_cast<int64_t>(end_seq))     // EndSeqNo
+        .finish();
     return std::string(msg.data(), msg.size());
 }
 
@@ -1243,6 +1291,318 @@ TEST_CASE("NullMessageStore operations", "[session][store][regression]") {
         REQUIRE(s.bytes_stored == 0);
         REQUIRE(s.store_failures == 0);
     }
+}
+
+// ============================================================================
+// Send Failure: Sequence Rollback & State Machine Guard Tests
+// ============================================================================
+
+TEST_CASE("Sequence preserved on transport failure", "[session][regression]") {
+    TestSession ts;
+    // Override on_send to return false (transport failure)
+    SessionCallbacks cbs;
+    cbs.on_send = [](std::span<const char>) -> bool { return false; };
+    cbs.on_state_change = [&](SessionState from, SessionState to) {
+        ts.state_changes.emplace_back(from, to);
+    };
+    ts.session.set_callbacks(std::move(cbs));
+
+    ts.session.on_connect();
+    uint32_t seq_before = ts.session.sequences().current_outbound();
+
+    auto result = ts.session.initiate_logon();
+    REQUIRE_FALSE(result.has_value());
+
+    // Sequence number must not have advanced
+    REQUIRE(ts.session.sequences().current_outbound() == seq_before);
+    // State must not have advanced to LogonSent
+    REQUIRE(ts.session.state() == SessionState::SocketConnected);
+}
+
+TEST_CASE("Sequence preserved when on_send callback is null", "[session][regression]") {
+    SessionConfig config{};
+    config.sender_comp_id = "SENDER";
+    config.target_comp_id = "TARGET";
+    SessionManager session(config);
+    // No callbacks set (on_send is null)
+
+    session.on_connect();
+    uint32_t seq_before = session.sequences().current_outbound();
+
+    auto result = session.initiate_logon();
+    REQUIRE_FALSE(result.has_value());
+    REQUIRE(session.sequences().current_outbound() == seq_before);
+}
+
+TEST_CASE("Acceptor logon: send failure prevents Active state", "[session][regression]") {
+    TestSession ts;
+    // Override on_send to fail
+    bool logon_called = false;
+    SessionCallbacks cbs;
+    cbs.on_send = [](std::span<const char>) -> bool { return false; };
+    cbs.on_logon = [&]() { logon_called = true; };
+    cbs.on_state_change = [&](SessionState from, SessionState to) {
+        ts.state_changes.emplace_back(from, to);
+    };
+    ts.session.set_callbacks(std::move(cbs));
+
+    ts.session.on_connect();
+    REQUIRE(ts.session.state() == SessionState::SocketConnected);
+
+    // Inject logon from counterparty (acceptor path)
+    auto logon = build_logon("TARGET", "SENDER", 1, 30);
+    ts.session.on_data_received(
+        std::span<const char>{logon.data(), logon.size()});
+
+    // Should have transitioned to LogonReceived but NOT to Active
+    REQUIRE(ts.session.state() == SessionState::LogonReceived);
+    REQUIRE_FALSE(logon_called);
+}
+
+TEST_CASE("Logout response: send failure prevents LogoutSent transition", "[session][regression]") {
+    TestSession ts;
+    ts.establish();
+    REQUIRE(ts.session.state() == SessionState::Active);
+
+    // Now override on_send to fail for the logout response
+    SessionCallbacks cbs;
+    bool logout_called = false;
+    cbs.on_send = [](std::span<const char>) -> bool { return false; };
+    cbs.on_logout = [&](std::string_view) { logout_called = true; };
+    ts.session.set_callbacks(std::move(cbs));
+
+    uint32_t seq_before = ts.session.sequences().current_outbound();
+
+    // Counterparty initiates logout
+    auto logout = build_logout("TARGET", "SENDER", 2);
+    ts.session.on_data_received(
+        std::span<const char>{logout.data(), logout.size()});
+
+    // Should have reached LogoutReceived but NOT Disconnected (LogoutSent failed)
+    REQUIRE(ts.session.state() == SessionState::LogoutReceived);
+    // on_logout still fires since we did receive a logout
+    REQUIRE(logout_called);
+    // Sequence should be rolled back
+    REQUIRE(ts.session.sequences().current_outbound() == seq_before);
+}
+
+TEST_CASE("Heartbeat send failure: stats not incremented", "[session][regression]") {
+    SessionConfig config{};
+    config.sender_comp_id = "SENDER";
+    config.target_comp_id = "TARGET";
+    config.heart_bt_int = 1;
+    SessionManager session2(config);
+
+    bool send_fail = true;
+    SessionCallbacks cbs2;
+    cbs2.on_send = [&](std::span<const char>) -> bool { return !send_fail; };
+    session2.set_callbacks(std::move(cbs2));
+
+    // Establish the session
+    session2.on_connect();
+    send_fail = false;
+    (void)session2.initiate_logon();
+    auto logon_resp = build_logon("TARGET", "SENDER", 1, 1);
+    session2.on_data_received(
+        std::span<const char>{logon_resp.data(), logon_resp.size()});
+    REQUIRE(session2.state() == SessionState::Active);
+
+    // Now make sends fail
+    send_fail = true;
+    uint32_t seq_active = session2.sequences().current_outbound();
+
+    // Wait for heartbeat interval to expire
+    std::this_thread::sleep_for(std::chrono::milliseconds(1100));
+    session2.on_timer_tick();
+
+    REQUIRE(session2.stats().heartbeats_sent == 0);
+    REQUIRE(session2.sequences().current_outbound() == seq_active);
+}
+
+TEST_CASE("Test request send failure: pending flag not set", "[session][regression]") {
+    SessionConfig config{};
+    config.sender_comp_id = "SENDER";
+    config.target_comp_id = "TARGET";
+    config.heart_bt_int = 1;
+    SessionManager session(config);
+
+    bool send_fail = true;
+    SessionCallbacks cbs;
+    cbs.on_send = [&](std::span<const char>) -> bool { return !send_fail; };
+    session.set_callbacks(std::move(cbs));
+
+    // Establish the session
+    session.on_connect();
+    send_fail = false;
+    (void)session.initiate_logon();
+    auto logon_resp = build_logon("TARGET", "SENDER", 1, 1);
+    session.on_data_received(
+        std::span<const char>{logon_resp.data(), logon_resp.size()});
+    REQUIRE(session.state() == SessionState::Active);
+
+    // Now make sends fail
+    send_fail = true;
+    uint32_t seq_active = session.sequences().current_outbound();
+
+    // Wait for test request interval (1.5x heartbeat = 1.5s)
+    std::this_thread::sleep_for(std::chrono::milliseconds(1600));
+    session.on_timer_tick();
+
+    REQUIRE(session.stats().test_requests_sent == 0);
+    REQUIRE(session.sequences().current_outbound() == seq_active);
+
+    // Second tick should still attempt test request (pending flag was not set)
+    std::this_thread::sleep_for(std::chrono::milliseconds(100));
+    session.on_timer_tick();
+
+    // Still 0 because send keeps failing, but importantly not crashing
+    REQUIRE(session.stats().test_requests_sent == 0);
+}
+
+TEST_CASE("rollback_outbound restores previous sequence number", "[session][sequence][regression]") {
+    SequenceManager seq;
+
+    SECTION("Normal rollback") {
+        REQUIRE(seq.next_outbound() == 1);
+        REQUIRE(seq.current_outbound() == 2);
+        seq.rollback_outbound();
+        REQUIRE(seq.current_outbound() == 1);
+    }
+
+    SECTION("Rollback at INITIAL_SEQ_NUM wraps to MAX_SEQ_NUM") {
+        REQUIRE(seq.current_outbound() == 1);
+        seq.rollback_outbound();
+        REQUIRE(seq.current_outbound() == SequenceManager::MAX_SEQ_NUM);
+    }
+
+    SECTION("Rollback after multiple advances") {
+        (void)seq.next_outbound();  // 1 -> 2
+        (void)seq.next_outbound();  // 2 -> 3
+        (void)seq.next_outbound();  // 3 -> 4
+        REQUIRE(seq.current_outbound() == 4);
+        seq.rollback_outbound();
+        REQUIRE(seq.current_outbound() == 3);
+    }
+}
+
+TEST_CASE("Send failure: message not written to store", "[session][store][regression]") {
+    SessionConfig config{};
+    config.sender_comp_id = "SENDER";
+    config.target_comp_id = "TARGET";
+    SessionManager session(config);
+
+    SpyMessageStore spy;
+    session.set_message_store(&spy);
+
+    SessionCallbacks cbs;
+    cbs.on_send = [](std::span<const char>) -> bool { return false; };
+    session.set_callbacks(std::move(cbs));
+
+    session.on_connect();
+    (void)session.initiate_logon();
+
+    // on_send returned false, so nothing should have been stored
+    REQUIRE(spy.store_calls.empty());
+}
+
+TEST_CASE("Successful send: message stored with correct sequence number", "[session][store][regression]") {
+    SessionConfig config{};
+    config.sender_comp_id = "SENDER";
+    config.target_comp_id = "TARGET";
+    SessionManager session(config);
+
+    SpyMessageStore spy;
+    session.set_message_store(&spy);
+
+    SessionCallbacks cbs;
+    cbs.on_send = [](std::span<const char>) -> bool { return true; };
+    session.set_callbacks(std::move(cbs));
+
+    session.on_connect();
+    REQUIRE(session.sequences().current_outbound() == 1);
+
+    (void)session.initiate_logon();
+
+    // Logon consumed seq 1, so store should have key=1
+    REQUIRE(spy.store_calls.size() == 1);
+    REQUIRE(spy.store_calls[0].seq_num == 1);
+
+    // Verify stored message contains MsgSeqNum=1
+    std::string stored(spy.store_calls[0].msg.begin(), spy.store_calls[0].msg.end());
+    REQUIRE(stored.find("34=1") != std::string::npos);
+}
+
+TEST_CASE("Multiple sends: store keys match actual MsgSeqNum", "[session][store][regression]") {
+    TestSession ts;
+    SpyMessageStore spy;
+    ts.session.set_message_store(&spy);
+
+    ts.establish();
+
+    // establish() sends logon (seq=1), receives logon response
+    // spy should have captured the logon with seq=1
+    REQUIRE_FALSE(spy.store_calls.empty());
+    REQUIRE(spy.store_calls[0].seq_num == 1);
+
+    // Now send a logout (seq=2)
+    (void)ts.session.initiate_logout("done");
+    REQUIRE(spy.store_calls.size() == 2);
+    REQUIRE(spy.store_calls[1].seq_num == 2);
+
+    std::string logout_msg(spy.store_calls[1].msg.begin(), spy.store_calls[1].msg.end());
+    REQUIRE(logout_msg.find("34=2") != std::string::npos);
+}
+
+TEST_CASE("SequenceReset gap-fill does not corrupt outbound sequence", "[session][store][regression]") {
+    TestSession ts;
+    SpyMessageStore spy;
+    ts.session.set_message_store(&spy);
+
+    ts.establish();
+    REQUIRE(ts.session.state() == SessionState::Active);
+
+    size_t store_calls_before = spy.store_calls.size();
+    uint32_t seq_before = ts.session.sequences().current_outbound();
+
+    // Counterparty sends ResendRequest asking for seq 1..1
+    // Our store (SpyMessageStore) has no messages, so the fallback
+    // SequenceReset gap-fill path runs with msg_seq_num(begin=1)
+    auto resend_req = build_resend_request("TARGET", "SENDER", 2, 1, 1);
+    ts.session.on_data_received(
+        std::span<const char>{resend_req.data(), resend_req.size()});
+
+    // Outbound sequence must NOT have changed (gap-fill doesn't consume it)
+    REQUIRE(ts.session.sequences().current_outbound() == seq_before);
+
+    // The SequenceReset should NOT have been written to the message store
+    // (it goes through transmit(), not send_message())
+    REQUIRE(spy.store_calls.size() == store_calls_before);
+
+    // Verify a SequenceReset (35=4) was actually sent
+    std::string last = ts.last_sent();
+    REQUIRE(last.find("35=4") != std::string::npos);
+}
+
+TEST_CASE("SequenceReset gap-fill send failure does not rollback outbound", "[session][regression]") {
+    TestSession ts;
+    ts.establish();
+    REQUIRE(ts.session.state() == SessionState::Active);
+
+    // Now make sends fail
+    SessionCallbacks cbs;
+    cbs.on_send = [](std::span<const char>) -> bool { return false; };
+    ts.session.set_callbacks(std::move(cbs));
+
+    uint32_t seq_before = ts.session.sequences().current_outbound();
+
+    // Counterparty sends ResendRequest
+    auto resend_req = build_resend_request("TARGET", "SENDER", 2, 1, 1);
+    ts.session.on_data_received(
+        std::span<const char>{resend_req.data(), resend_req.size()});
+
+    // Outbound sequence must NOT have been rolled back
+    // (transmit() doesn't touch sequences)
+    REQUIRE(ts.session.sequences().current_outbound() == seq_before);
 }
 
 TEST_CASE("IMessageStore polymorphic access", "[session][store][regression]") {
