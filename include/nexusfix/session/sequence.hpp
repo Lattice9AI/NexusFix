@@ -136,11 +136,14 @@ public:
         uint32_t end;
     };
 
-    GapTracker() noexcept : count_{0} {}
+    GapTracker() noexcept : count_{0}, truncated_{false} {}
 
     /// Add a gap to track
     bool add_gap(uint32_t begin, uint32_t end) noexcept {
-        if (count_ >= MAX_GAPS) return false;
+        if (count_ >= MAX_GAPS) {
+            truncated_ = true;
+            return false;
+        }
         gaps_[count_++] = {begin, end};
         return true;
     }
@@ -164,6 +167,8 @@ public:
                     if (count_ < MAX_GAPS) {
                         gaps_[count_++] = {seq_num + 1, gap.end};
                         gap.end = seq_num - 1;
+                    } else {
+                        truncated_ = true;
                     }
                     ++i;
                 }
@@ -188,9 +193,15 @@ public:
         return idx < count_ ? &gaps_[idx] : nullptr;
     }
 
-    /// Clear all gaps
+    /// Query whether any gap information was lost due to capacity overflow
+    [[nodiscard]] bool truncated() const noexcept {
+        return truncated_;
+    }
+
+    /// Clear all gaps and reset truncation flag
     void clear() noexcept {
         count_ = 0;
+        truncated_ = false;
     }
 
 private:
@@ -203,6 +214,7 @@ private:
 
     std::array<Gap, MAX_GAPS> gaps_;
     size_t count_;
+    bool truncated_;
 };
 
 } // namespace nfx

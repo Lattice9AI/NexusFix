@@ -324,6 +324,60 @@ TEST_CASE("Gap tracking", "[session][gap]") {
         REQUIRE(tracker.gap_count() == 0);
     }
 
+    SECTION("add_gap at MAX_GAPS sets truncated flag") {
+        for (size_t i = 0; i < GapTracker::MAX_GAPS; ++i) {
+            REQUIRE(tracker.add_gap(static_cast<uint32_t>(i * 10),
+                                    static_cast<uint32_t>(i * 10 + 5)));
+        }
+        REQUIRE_FALSE(tracker.truncated());
+
+        // 33rd gap overflows
+        REQUIRE_FALSE(tracker.add_gap(999, 1000));
+        REQUIRE(tracker.truncated());
+
+        // Flag persists across subsequent calls
+        REQUIRE_FALSE(tracker.add_gap(1001, 1002));
+        REQUIRE(tracker.truncated());
+    }
+
+    SECTION("fill gap split at MAX_GAPS sets truncated flag") {
+        // Fill 31 gaps, leaving room for exactly one more
+        for (size_t i = 0; i < GapTracker::MAX_GAPS - 1; ++i) {
+            REQUIRE(tracker.add_gap(static_cast<uint32_t>(i * 100),
+                                    static_cast<uint32_t>(i * 100)));
+        }
+        REQUIRE(tracker.gap_count() == GapTracker::MAX_GAPS - 1);
+
+        // Add one wide gap that can be split
+        REQUIRE(tracker.add_gap(5000, 5010));
+        REQUIRE(tracker.gap_count() == GapTracker::MAX_GAPS);
+        REQUIRE_FALSE(tracker.truncated());
+
+        // Splitting this gap requires a new slot, but we are at MAX_GAPS
+        tracker.fill(5005);
+        REQUIRE(tracker.truncated());
+
+        // The original gap should still exist (split was skipped)
+        // gap_count stays at MAX_GAPS since the split didn't happen
+        REQUIRE(tracker.gap_count() == GapTracker::MAX_GAPS);
+    }
+
+    SECTION("clear resets truncated flag") {
+        for (size_t i = 0; i < GapTracker::MAX_GAPS; ++i) {
+            tracker.add_gap(static_cast<uint32_t>(i), static_cast<uint32_t>(i));
+        }
+        REQUIRE_FALSE(tracker.add_gap(999, 999));
+        REQUIRE(tracker.truncated());
+
+        tracker.clear();
+        REQUIRE_FALSE(tracker.truncated());
+        REQUIRE_FALSE(tracker.has_gaps());
+    }
+
+    SECTION("truncated is false on fresh tracker") {
+        REQUIRE_FALSE(tracker.truncated());
+    }
+
     SECTION("multiple gaps tracked independently") {
         tracker.add_gap(1, 3);
         tracker.add_gap(10, 12);
