@@ -1864,6 +1864,70 @@ TEST_CASE("SohPositions overflow sets truncated flag", "[parser][edge-case][regr
     }
 }
 
+// ============================================================================
+// FIXStructuralIndex Truncation Tests (TICKET_469_9)
+// ============================================================================
+
+TEST_CASE("FIXStructuralIndex truncation flag", "[parser][structural][regression]") {
+    SECTION("257 fields sets truncated via build_index") {
+        // Build a buffer with 257 tag=value\x01 fields
+        std::string buf;
+        for (int i = 0; i < 257; ++i) {
+            buf += std::to_string(i + 1) + "=V\x01";
+        }
+        auto idx = simd::build_index(
+            std::span<const char>{buf.data(), buf.size()});
+
+        REQUIRE(idx.soh_count == simd::MAX_FIELDS);
+        REQUIRE(idx.truncated());
+        REQUIRE(!idx.valid());
+    }
+
+    SECTION("256 fields does not truncate via build_index") {
+        std::string buf;
+        for (int i = 0; i < 256; ++i) {
+            buf += std::to_string(i + 1) + "=V\x01";
+        }
+        auto idx = simd::build_index(
+            std::span<const char>{buf.data(), buf.size()});
+
+        REQUIRE(idx.soh_count == simd::MAX_FIELDS);
+        REQUIRE(!idx.truncated());
+        REQUIRE(idx.valid());
+    }
+
+    SECTION("257 fields sets truncated via build_index_scalar") {
+        std::string buf;
+        for (int i = 0; i < 257; ++i) {
+            buf += std::to_string(i + 1) + "=V\x01";
+        }
+        auto idx = simd::build_index_scalar(
+            std::span<const char>{buf.data(), buf.size()});
+
+        REQUIRE(idx.soh_count == simd::MAX_FIELDS);
+        REQUIRE(idx.truncated());
+        REQUIRE(!idx.valid());
+    }
+
+    SECTION("256 fields does not truncate via build_index_scalar") {
+        std::string buf;
+        for (int i = 0; i < 256; ++i) {
+            buf += std::to_string(i + 1) + "=V\x01";
+        }
+        auto idx = simd::build_index_scalar(
+            std::span<const char>{buf.data(), buf.size()});
+
+        REQUIRE(idx.soh_count == simd::MAX_FIELDS);
+        REQUIRE(!idx.truncated());
+        REQUIRE(idx.valid());
+    }
+
+    SECTION("Default constructed index is not truncated") {
+        simd::FIXStructuralIndex idx;
+        REQUIRE(!idx.truncated());
+    }
+}
+
 TEST_CASE("Unterminated field handling", "[parser][edge-case][regression]") {
     SECTION("ParsedMessage rejects missing trailing SOH after checksum") {
         std::string msg = HEARTBEAT;

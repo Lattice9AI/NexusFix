@@ -130,6 +130,7 @@ struct alignas(CACHE_LINE_SIZE) FIXStructuralIndex {
     uint16_t body_length_start;                        // Position of tag 9=
     uint16_t msg_type_start;                           // Position of tag 35=
     uint16_t message_size;                             // Total message size
+    bool truncated_{false};                            // True if fields exceeded MAX_FIELDS
 
     constexpr FIXStructuralIndex() noexcept
         : soh_positions{}
@@ -140,16 +141,23 @@ struct alignas(CACHE_LINE_SIZE) FIXStructuralIndex {
         , body_length_start{0}
         , msg_type_start{0}
         , message_size{0}
+        , truncated_{false}
     {}
+
+    /// Check if structural index was truncated due to MAX_FIELDS limit
+    [[nodiscard]] constexpr bool truncated() const noexcept {
+        return truncated_;
+    }
 
     /// Get field count (number of tag=value pairs)
     [[nodiscard]] constexpr size_t field_count() const noexcept {
         return soh_count;
     }
 
-    /// Check if index is valid
+    /// Check if index is valid and complete
     [[nodiscard]] constexpr bool valid() const noexcept {
-        return soh_count > 0 && equals_count > 0 && soh_count == equals_count;
+        return !truncated_ && soh_count > 0 && equals_count > 0 &&
+               soh_count == equals_count;
     }
 
     /// Get tag boundaries for field at index
@@ -240,6 +248,17 @@ inline FIXStructuralIndex build_index_scalar(std::span<const char> data) noexcep
         }
     }
 
+    // Check if truncation occurred: fields remain beyond MAX_FIELDS
+    if (idx.soh_count >= MAX_FIELDS) {
+        size_t resume = idx.soh_positions[MAX_FIELDS - 1] + 1;
+        for (size_t j = resume; j < len; ++j) {
+            if (ptr[j] == fix::SOH) {
+                idx.truncated_ = true;
+                break;
+            }
+        }
+    }
+
     return idx;
 }
 
@@ -312,6 +331,17 @@ inline FIXStructuralIndex build_index_xsimd(std::span<const char> data) noexcept
         }
         else if (cptr[i] == fix::SOH) [[unlikely]] {
             idx.soh_positions[idx.soh_count++] = static_cast<uint16_t>(i);
+        }
+    }
+
+    // Check if truncation occurred: fields remain beyond MAX_FIELDS
+    if (idx.soh_count >= MAX_FIELDS) {
+        size_t resume = idx.soh_positions[MAX_FIELDS - 1] + 1;
+        for (size_t j = resume; j < data.size(); ++j) {
+            if (cptr[j] == fix::SOH) {
+                idx.truncated_ = true;
+                break;
+            }
         }
     }
 
@@ -431,6 +461,17 @@ inline FIXStructuralIndex build_index_avx2(std::span<const char> data) noexcept 
         }
     }
 
+    // Check if truncation occurred: fields remain beyond MAX_FIELDS
+    if (idx.soh_count >= MAX_FIELDS) {
+        size_t resume = idx.soh_positions[MAX_FIELDS - 1] + 1;
+        for (size_t j = resume; j < data.size(); ++j) {
+            if (ptr[j] == fix::SOH) {
+                idx.truncated_ = true;
+                break;
+            }
+        }
+    }
+
     // Post-process to find important tags
     for (uint16_t i = 0; i < idx.equals_count && i < 10; ++i) {
         uint16_t eq_pos = idx.equals_positions[i];
@@ -522,6 +563,17 @@ inline FIXStructuralIndex build_index_avx512(std::span<const char> data) noexcep
         }
         else if (ptr[i] == fix::SOH) [[unlikely]] {
             idx.soh_positions[idx.soh_count++] = static_cast<uint16_t>(i);
+        }
+    }
+
+    // Check if truncation occurred: fields remain beyond MAX_FIELDS
+    if (idx.soh_count >= MAX_FIELDS) {
+        size_t resume = idx.soh_positions[MAX_FIELDS - 1] + 1;
+        for (size_t j = resume; j < data.size(); ++j) {
+            if (ptr[j] == fix::SOH) {
+                idx.truncated_ = true;
+                break;
+            }
         }
     }
 
