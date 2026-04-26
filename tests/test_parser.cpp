@@ -594,6 +594,53 @@ TEST_CASE("StreamParser skips BodyLength mismatch", "[parser][stream][regression
     }
 }
 
+TEST_CASE("StreamParser MAX_PENDING overflow", "[parser][stream][regression]") {
+    StreamParser parser;
+
+    // Build 20 identical valid FIX messages
+    std::string inner =
+        "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+        "34=1\x01" "52=20231215-10:30:00\x01";
+    std::string single_msg = build_fix_message(inner);
+    size_t msg_len = single_msg.size();
+
+    constexpr size_t TOTAL_MSGS = 20;
+    std::string buffer;
+    buffer.reserve(msg_len * TOTAL_MSGS);
+    for (size_t i = 0; i < TOTAL_MSGS; ++i) {
+        buffer += single_msg;
+    }
+
+    // Feed entire buffer - should stop after 16 messages (MAX_PENDING)
+    size_t consumed = parser.feed(
+        std::span<const char>{buffer.data(), buffer.size()});
+
+    REQUIRE(consumed == msg_len * 16);
+
+    // Drain all 16 pending messages
+    for (size_t i = 0; i < 16; ++i) {
+        REQUIRE(parser.has_message());
+        auto [start, end] = parser.next_message();
+        REQUIRE(end - start == msg_len);
+    }
+    REQUIRE(!parser.has_message());
+
+    // Feed remaining 4 messages
+    auto leftover = std::span<const char>{
+        buffer.data() + consumed, buffer.size() - consumed};
+    size_t consumed2 = parser.feed(leftover);
+
+    REQUIRE(consumed2 == msg_len * 4);
+
+    // Drain remaining 4 messages
+    for (size_t i = 0; i < 4; ++i) {
+        REQUIRE(parser.has_message());
+        auto [start, end] = parser.next_message();
+        REQUIRE(end - start == msg_len);
+    }
+    REQUIRE(!parser.has_message());
+}
+
 // ============================================================================
 // Structural Index Tests (TICKET_208 simdjson-style)
 // ============================================================================

@@ -260,6 +260,11 @@ public:
         size_t consumed = 0;
 
         while (consumed < data.size()) {
+            // Stop if pending buffer is full - caller must drain before feeding more
+            if (pending_count_ >= MAX_PENDING) {
+                break;
+            }
+
             // Try to find complete message
             auto remaining = data.subspan(consumed);
             auto boundary = simd::find_message_boundary(remaining);
@@ -275,12 +280,10 @@ public:
             }
 
             // Store message boundary for retrieval
-            if (pending_count_ < MAX_PENDING) {
-                pending_messages_[pending_count_++] = {
-                    consumed + boundary.start,
-                    consumed + boundary.end
-                };
-            }
+            pending_messages_[pending_count_++] = {
+                consumed + boundary.start,
+                consumed + boundary.end
+            };
 
             consumed += boundary.end;
         }
