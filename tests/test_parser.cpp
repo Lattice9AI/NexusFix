@@ -1757,6 +1757,66 @@ TEST_CASE("ParsedMessage rejects messages exceeding MAX_FIELDS", "[parser][edge-
     }
 }
 
+TEST_CASE("SohPositions overflow sets truncated flag", "[parser][edge-case][regression]") {
+    SECTION("push() beyond MAX_SOH_POSITIONS sets truncated") {
+        simd::SohPositions pos;
+        for (size_t i = 0; i < simd::MAX_SOH_POSITIONS; ++i) {
+            pos.push(static_cast<uint16_t>(i));
+        }
+        REQUIRE(pos.size() == simd::MAX_SOH_POSITIONS);
+        REQUIRE(!pos.truncated());
+
+        // One more push triggers truncation
+        pos.push(static_cast<uint16_t>(simd::MAX_SOH_POSITIONS));
+        REQUIRE(pos.size() == simd::MAX_SOH_POSITIONS);
+        REQUIRE(pos.truncated());
+    }
+
+    SECTION("scan_soh on buffer with >256 SOH reports truncation") {
+        // Build a buffer with 257 SOH-delimited single-char fields: "X\x01" x 257
+        std::string buf;
+        for (size_t i = 0; i < simd::MAX_SOH_POSITIONS + 1; ++i) {
+            buf += 'X';
+            buf += fix::SOH;
+        }
+        auto positions = simd::scan_soh(
+            std::span<const char>{buf.data(), buf.size()});
+        REQUIRE(positions.truncated());
+        REQUIRE(positions.size() == simd::MAX_SOH_POSITIONS);
+    }
+
+    SECTION("scan_soh with exactly MAX_SOH_POSITIONS does not truncate") {
+        // Build a buffer with exactly 256 SOH-delimited fields: "X\x01" x 256
+        std::string buf;
+        for (size_t i = 0; i < simd::MAX_SOH_POSITIONS; ++i) {
+            buf += 'X';
+            buf += fix::SOH;
+        }
+        auto positions = simd::scan_soh(
+            std::span<const char>{buf.data(), buf.size()});
+        REQUIRE(!positions.truncated());
+        REQUIRE(positions.size() == simd::MAX_SOH_POSITIONS);
+    }
+
+    SECTION("ParsedMessage rejects message exceeding MAX_SOH_POSITIONS") {
+        // Build a FIX message body with enough fields to exceed 256 SOH positions
+        std::string inner;
+        inner += "35=8\x01" "49=SENDER\x01" "56=TARGET\x01" "34=1\x01"
+                 "52=20231215-10:30:00.000\x01";
+        // 5 fields so far; need 254 - 5 = 249 more inner fields
+        // (plus 3 framing = 257 total SOH positions)
+        for (int i = 0; i < 249; ++i) {
+            inner += std::to_string(100 + i) + "=V\x01";
+        }
+        std::string msg = build_fix_message(inner);
+
+        auto result = ParsedMessage::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!result.has_value());
+        REQUIRE(result.error().code == ParseErrorCode::FieldCountExceeded);
+    }
+}
+
 TEST_CASE("Unterminated field handling", "[parser][edge-case][regression]") {
     SECTION("ParsedMessage rejects missing trailing SOH after checksum") {
         std::string msg = HEARTBEAT;

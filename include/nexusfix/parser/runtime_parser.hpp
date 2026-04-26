@@ -64,6 +64,10 @@ public:
 
         // Parse all fields using SIMD-accelerated scanning
         auto soh_positions = simd::scan_soh(data);
+        if (soh_positions.truncated()) [[unlikely]] {
+            return std::unexpected{ParseError{
+                ParseErrorCode::FieldCountExceeded, 0, 0}};
+        }
         const char* __restrict ptr = data.data();
 
         size_t field_start = 0;

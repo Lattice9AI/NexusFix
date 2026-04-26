@@ -61,11 +61,13 @@ using nfx::CACHE_LINE_SIZE;
 struct alignas(CACHE_LINE_SIZE) SohPositions {
     std::array<uint16_t, MAX_SOH_POSITIONS> positions;
     size_t count;
+    bool truncated_;
 
-    constexpr SohPositions() noexcept : positions{}, count{0} {}
+    constexpr SohPositions() noexcept : positions{}, count{0}, truncated_{false} {}
 
     [[nodiscard]] constexpr bool empty() const noexcept { return count == 0; }
     [[nodiscard]] constexpr size_t size() const noexcept { return count; }
+    [[nodiscard]] constexpr bool truncated() const noexcept { return truncated_; }
 
     [[nodiscard]] constexpr uint16_t operator[](size_t i) const noexcept {
         return positions[i];
@@ -74,10 +76,25 @@ struct alignas(CACHE_LINE_SIZE) SohPositions {
     constexpr void push(uint16_t pos) noexcept {
         if (count < MAX_SOH_POSITIONS) [[likely]] {
             positions[count++] = pos;
+        } else {
+            truncated_ = true;
         }
     }
 
-    constexpr void clear() noexcept { count = 0; }
+    constexpr void clear() noexcept { count = 0; truncated_ = false; }
+
+    /// Check for truncation after scanning: if at capacity, scan remaining
+    /// data for any additional SOH bytes that were not recorded.
+    void check_truncation(std::span<const char> data) noexcept {
+        if (count < MAX_SOH_POSITIONS) [[likely]] return;
+        size_t resume = positions[MAX_SOH_POSITIONS - 1] + 1;
+        for (size_t i = resume; i < data.size(); ++i) {
+            if (data[i] == fix::SOH) {
+                truncated_ = true;
+                return;
+            }
+        }
+    }
 };
 
 // ============================================================================
@@ -95,6 +112,7 @@ inline SohPositions scan_soh_scalar(std::span<const char> data) noexcept {
         }
     }
 
+    result.check_truncation(data);
     return result;
 }
 
@@ -172,6 +190,7 @@ inline SohPositions scan_soh_xsimd(std::span<const char> data) noexcept {
         }
     }
 
+    result.check_truncation(data);
     return result;
 }
 
@@ -401,6 +420,7 @@ inline SohPositions scan_soh_avx2(std::span<const char> data) noexcept {
         }
     }
 
+    result.check_truncation(data);
     return result;
 }
 
@@ -555,6 +575,7 @@ inline SohPositions scan_soh_avx512(std::span<const char> data) noexcept {
         }
     }
 
+    result.check_truncation(data);
     return result;
 }
 
