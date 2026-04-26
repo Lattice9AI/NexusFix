@@ -166,13 +166,14 @@ struct FieldView {
 class FieldIterator {
 public:
     constexpr FieldIterator() noexcept
-        : data_{}, pos_{0} {}
+        : data_{}, pos_{0}, last_error_{ParseErrorCode::None} {}
 
     constexpr explicit FieldIterator(std::span<const char> data) noexcept
-        : data_{data}, pos_{0} {}
+        : data_{data}, pos_{0}, last_error_{ParseErrorCode::None} {}
 
     /// Get next field (returns invalid FieldView if no more fields)
     [[nodiscard]] NFX_HOT constexpr FieldView next() noexcept {
+        last_error_ = ParseErrorCode::None;
         if (pos_ >= data_.size()) [[unlikely]] {
             return FieldView{};
         }
@@ -185,6 +186,7 @@ public:
         while (pos_ < data_.size() && ptr[pos_] != fix::EQUALS) [[likely]] {
             char c = ptr[pos_];
             if (c < '0' || c > '9') [[unlikely]] {
+                last_error_ = ParseErrorCode::InvalidTagNumber;
                 return FieldView{};  // Invalid tag
             }
             tag = tag * 10 + (c - '0');
@@ -192,6 +194,7 @@ public:
         }
 
         if (pos_ >= data_.size() || ptr[pos_] != fix::EQUALS) [[unlikely]] {
+            last_error_ = ParseErrorCode::InvalidFieldFormat;
             return FieldView{};  // Missing '='
         }
         ++pos_;  // Skip '='
@@ -202,11 +205,14 @@ public:
             ++pos_;
         }
 
+        if (pos_ >= data_.size()) [[unlikely]] {
+            last_error_ = ParseErrorCode::UnterminatedField;
+            return FieldView{};
+        }
+
         size_t value_len = pos_ - value_start;
 
-        if (pos_ < data_.size()) [[likely]] {
-            ++pos_;  // Skip SOH
-        }
+        ++pos_;  // Skip SOH
 
         return FieldView{tag, std::span<const char>{ptr + value_start, value_len}};
     }
@@ -219,6 +225,11 @@ public:
     /// Get current position in buffer
     [[nodiscard]] constexpr size_t position() const noexcept {
         return pos_;
+    }
+
+    /// Get the error code for the most recent parse failure
+    [[nodiscard]] constexpr ParseErrorCode last_error() const noexcept {
+        return last_error_;
     }
 
     /// Reset to beginning
@@ -234,6 +245,7 @@ public:
 private:
     std::span<const char> data_;
     size_t pos_;
+    ParseErrorCode last_error_;
 };
 
 // ============================================================================

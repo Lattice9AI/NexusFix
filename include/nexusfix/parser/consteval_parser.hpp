@@ -174,7 +174,11 @@ template <size_t MaxFields = 64>
     while (iter.has_next() && result.count < MaxFields) {
         FieldView field = iter.next();
         if (!field.is_valid()) {
-            result.error = ParseError{ParseErrorCode::InvalidFieldFormat, 0, iter.position()};
+            auto code = iter.last_error();
+            if (code == ParseErrorCode::None) {
+                code = ParseErrorCode::InvalidFieldFormat;
+            }
+            result.error = ParseError{code, 0, iter.position()};
             break;
         }
         result.fields[result.count++] = field;
@@ -269,7 +273,11 @@ constexpr HeaderParseResult parse_header(
     while (iter.has_next() && fields_parsed < 7) [[likely]] {
         FieldView field = iter.next();
         if (!field.is_valid()) [[unlikely]] {
-            result.error = ParseError{ParseErrorCode::InvalidFieldFormat, 0, iter.position()};
+            auto code = iter.last_error();
+            if (code == ParseErrorCode::None) {
+                code = ParseErrorCode::InvalidFieldFormat;
+            }
+            result.error = ParseError{code, 0, iter.position()};
             return result;
         }
 

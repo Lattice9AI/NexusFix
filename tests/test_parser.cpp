@@ -170,6 +170,15 @@ TEST_CASE("FieldIterator", "[parser][field_view][regression]") {
         auto f4 = iter.next();
         REQUIRE(!f4.is_valid());  // No more fields
     }
+
+    SECTION("Reject unterminated field at end of buffer") {
+        const std::string bad = "35=A";
+        FieldIterator iter{std::span<const char>{bad.data(), bad.size()}};
+
+        auto field = iter.next();
+        REQUIRE(!field.is_valid());
+        REQUIRE(iter.last_error() == ParseErrorCode::UnterminatedField);
+    }
 }
 
 // ============================================================================
@@ -1625,5 +1634,90 @@ TEST_CASE("Non-digit characters in tag number", "[parser][edge-case]") {
 
         auto f = iter.next();
         REQUIRE(!f.is_valid());
+    }
+}
+
+TEST_CASE("ParsedMessage rejects messages exceeding MAX_FIELDS", "[parser][edge-case][regression]") {
+    // scan_soh scans the entire buffer, so the SOH-delimited field count
+    // includes framing tags: 8=, 9=, all inner fields, and 10= (checksum).
+    // Total SOH positions = 2 (8, 9) + N_inner + 1 (10) = N_inner + 3.
+    // To exceed MAX_FIELDS (128) we need N_inner + 3 > 128 => N_inner > 125.
+
+    SECTION("129 total fields triggers FieldCountExceeded") {
+        // 126 inner fields + 3 framing fields = 129 total
+        std::string inner;
+        inner += "35=8\x01" "49=SENDER\x01" "56=TARGET\x01" "34=1\x01"
+                 "52=20231215-10:30:00.000\x01";
+        // 5 inner fields so far, need 121 more
+        for (int i = 0; i < 121; ++i) {
+            inner += std::to_string(100 + i) + "=V\x01";
+        }
+        std::string msg = build_fix_message(inner);
+
+        auto result = ParsedMessage::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!result.has_value());
+        REQUIRE(result.error().code == ParseErrorCode::FieldCountExceeded);
+    }
+
+    SECTION("IndexedParser accepts the same oversized message") {
+        std::string inner;
+        inner += "35=8\x01" "49=SENDER\x01" "56=TARGET\x01" "34=1\x01"
+                 "52=20231215-10:30:00.000\x01";
+        for (int i = 0; i < 121; ++i) {
+            inner += std::to_string(100 + i) + "=V\x01";
+        }
+        std::string msg = build_fix_message(inner);
+
+        auto result = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(result.has_value());
+    }
+
+    SECTION("Exactly 128 total fields succeeds") {
+        // 125 inner fields + 3 framing = 128 total
+        std::string inner;
+        inner += "35=8\x01" "49=SENDER\x01" "56=TARGET\x01" "34=1\x01"
+                 "52=20231215-10:30:00.000\x01";
+        // 5 inner so far, need 120 more
+        for (int i = 0; i < 120; ++i) {
+            inner += std::to_string(100 + i) + "=V\x01";
+        }
+        std::string msg = build_fix_message(inner);
+
+        auto result = ParsedMessage::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(result.has_value());
+        REQUIRE(result->field_count() == 128);
+    }
+}
+
+TEST_CASE("Unterminated field handling", "[parser][edge-case][regression]") {
+    SECTION("ParsedMessage rejects missing trailing SOH after checksum") {
+        std::string msg = HEARTBEAT;
+        msg.pop_back();  // Remove final SOH from 10=132<SOH>
+
+        auto result = ParsedMessage::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!result.has_value());
+        REQUIRE(result.error().code == ParseErrorCode::UnterminatedField);
+    }
+
+    SECTION("IndexedParser rejects missing trailing SOH after checksum") {
+        std::string msg = HEARTBEAT;
+        msg.pop_back();
+
+        auto result = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!result.has_value());
+        REQUIRE(result.error().code == ParseErrorCode::UnterminatedField);
+    }
+
+    SECTION("extract_fields reports unterminated trailing field") {
+        const std::string bad = "35=A";
+        auto fields = extract_fields(std::span<const char>{bad.data(), bad.size()});
+
+        REQUIRE(!fields.ok());
+        REQUIRE(fields.error.code == ParseErrorCode::UnterminatedField);
     }
 }

@@ -41,6 +41,11 @@ public:
     static ParseResult<ParsedMessage> parse(
         std::span<const char> data) noexcept
     {
+        if (!data.empty() && data.back() != fix::SOH) [[unlikely]] {
+            return std::unexpected{ParseError{
+                ParseErrorCode::UnterminatedField, 0, data.size() - 1}};
+        }
+
         ParsedMessage msg;
         msg.raw_ = data;
 
@@ -62,7 +67,7 @@ public:
         const char* __restrict ptr = data.data();
 
         size_t field_start = 0;
-        for (size_t i = 0; i < soh_positions.count && msg.field_count_ < MAX_FIELDS; ++i) [[likely]] {
+        for (size_t i = 0; i < soh_positions.count; ++i) [[likely]] {
             size_t field_end = soh_positions[i];
 
             // Find '=' separator
@@ -81,6 +86,12 @@ public:
                         ParseErrorCode::InvalidTagNumber, 0, j}};
                 }
                 tag = tag * 10 + (c - '0');
+            }
+
+            // Reject if field count exceeds capacity
+            if (msg.field_count_ >= MAX_FIELDS) [[unlikely]] {
+                return std::unexpected{ParseError{
+                    ParseErrorCode::FieldCountExceeded, tag, field_start}};
             }
 
             // Create field view (zero-copy)
@@ -348,18 +359,12 @@ public:
             size_t pos_before = iter.position();
             FieldView field = iter.next();
             if (!field.is_valid()) [[unlikely]] {
-                // Determine error: inspect the byte at the position where
-                // parsing failed to distinguish tag vs format errors.
-                const char* ptr = data.data();
-                char c = ptr[pos_before];
-                if (c >= '0' && c <= '9') {
-                    // Tag started with a digit but no '=' was found
-                    return std::unexpected{ParseError{
-                        ParseErrorCode::InvalidFieldFormat, 0, pos_before}};
+                auto code = iter.last_error();
+                if (code != ParseErrorCode::None) {
+                    return std::unexpected{ParseError{code, 0, pos_before}};
                 }
-                // Non-digit at tag start position
                 return std::unexpected{ParseError{
-                    ParseErrorCode::InvalidTagNumber, 0, pos_before}};
+                    ParseErrorCode::InvalidFieldFormat, 0, pos_before}};
             }
 
             if constexpr (StrictMode) {
