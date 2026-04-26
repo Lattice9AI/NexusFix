@@ -411,6 +411,65 @@ constexpr ParseError validate_checksum(
 }
 
 // ============================================================================
+// BodyLength Validation
+// ============================================================================
+
+/// Validate FIX BodyLength (tag 9) against actual message body size
+/// Per FIX spec: BodyLength = bytes from byte after SOH following tag 9 value
+///               up to and including the SOH delimiter before tag 10
+[[nodiscard]] NFX_HOT
+constexpr ParseError validate_body_length(
+    std::span<const char> data,
+    int declared_body_length) noexcept
+{
+    const char* ptr = data.data();
+    const size_t len = data.size();
+
+    // Find body_start: byte immediately after the SOH following "9=<value>"
+    // Scan for "9=" after the first SOH (past "8=...\x01")
+    size_t body_start = 0;
+    for (size_t i = 0; i + 1 < len; ++i) {
+        if (ptr[i] == fix::SOH && ptr[i + 1] == '9' && i + 2 < len && ptr[i + 2] == '=') {
+            // Found "\x01 9=", now skip past "9=<value>\x01"
+            size_t j = i + 3;
+            while (j < len && ptr[j] != fix::SOH) ++j;
+            if (j < len) {
+                body_start = j + 1;  // byte after the SOH following 9=<value>
+            }
+            break;
+        }
+    }
+
+    if (body_start == 0) [[unlikely]] {
+        return ParseError{ParseErrorCode::MissingRequiredField, 9};
+    }
+
+    // Find body_end: the SOH immediately before "10="
+    // Search backwards for "\x01 10="
+    size_t body_end = 0;
+    for (size_t i = len - 1; i > body_start; --i) {
+        if (ptr[i - 1] == fix::SOH && ptr[i] == '1' && i + 1 < len && ptr[i + 1] == '0'
+            && i + 2 < len && ptr[i + 2] == '=') {
+            body_end = i - 1;  // position of the SOH before "10="
+            break;
+        }
+    }
+
+    if (body_end == 0) [[unlikely]] {
+        return ParseError{ParseErrorCode::MissingRequiredField, 10};
+    }
+
+    // Actual body length includes the SOH before 10= (body_end points to that SOH)
+    size_t actual = body_end - body_start + 1;
+
+    if (static_cast<size_t>(declared_body_length) != actual) [[unlikely]] {
+        return ParseError{ParseErrorCode::BodyLengthMismatch, 9};
+    }
+
+    return ParseError{};
+}
+
+// ============================================================================
 // Static Assertions for Parser Types
 // ============================================================================
 

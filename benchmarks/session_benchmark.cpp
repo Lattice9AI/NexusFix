@@ -75,7 +75,7 @@ std::string build_fix_message(std::string_view body_without_checksum) {
 
 constexpr std::string_view EXEC_REPORT_BODY =
     "8=FIX.4.4\x01"
-    "9=200\x01"
+    "9=147\x01"
     "35=8\x01"
     "49=SENDER\x01"
     "56=TARGET\x01"

@@ -18,8 +18,8 @@ int main() {
 
     // Test FIX message parsing
     const char msg[] =
-        "8=FIX.4.4\x01" "9=70\x01" "35=A\x01" "49=CLIENT\x01" "56=SERVER\x01"
-        "34=1\x01" "52=20231215-10:30:00\x01" "98=0\x01" "108=30\x01" "10=000\x01";
+        "8=FIX.4.4\x01" "9=63\x01" "35=A\x01" "49=CLIENT\x01" "56=SERVER\x01"
+        "34=1\x01" "52=20231215-10:30:00\x01" "98=0\x01" "108=30\x01" "10=187\x01";
 
     auto result = parse_message(std::span<const char>{msg, sizeof(msg) - 1});
     if (result.has_value()) {

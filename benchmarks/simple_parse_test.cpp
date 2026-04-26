@@ -7,7 +7,7 @@
 
 int main() {
     // Simple heartbeat message
-    const char* msg = "8=FIX.4.4\x01" "9=80\x01" "35=0\x01" "49=SENDER\x01" "56=TARGET\x01" "34=102\x01" "52=20240331-14:30:47.789\x01" "10=789\x01";
+    const char* msg = "8=FIX.4.4\x01" "9=57\x01" "35=0\x01" "49=SENDER\x01" "56=TARGET\x01" "34=102\x01" "52=20240331-14:30:47.789\x01" "10=204\x01";
     size_t len = std::strlen(msg);
 
     std::cout << "Message length: " << len << "\n";

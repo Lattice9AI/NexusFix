@@ -98,12 +98,12 @@ TEST_CASE("MarketDataRequest Builder - Snapshot only", "[market_data][request][r
 
 TEST_CASE("MarketDataSnapshotFullRefresh Parser - Basic snapshot", "[market_data][snapshot][regression]") {
     std::string raw_msg = make_fix_message(
-        "8=FIX.4.4|9=150|35=W|49=SERVER|56=CLIENT|34=1|52=20260122-10:00:00.000|"
+        "8=FIX.4.4|9=155|35=W|49=SERVER|56=CLIENT|34=1|52=20260122-10:00:00.000|"
         "262=MD001|55=AAPL|268=3|"
         "269=0|270=150.25|271=1000|"
         "269=1|270=150.30|271=500|"
         "269=2|270=150.27|271=100|"
-        "10=019|"
+        "10=024|"
     );
 
     auto result = MarketDataSnapshotFullRefresh::from_buffer(
@@ -121,7 +121,7 @@ TEST_CASE("MarketDataSnapshotFullRefresh Parser - Basic snapshot", "[market_data
 
 TEST_CASE("MarketDataSnapshotFullRefresh Parser - Iterate entries", "[market_data][snapshot][iterator][regression]") {
     std::string raw_msg = make_fix_message(
-        "8=FIX.4.4|9=180|35=W|49=SERVER|56=CLIENT|34=1|52=20260122-10:00:00.000|"
+        "8=FIX.4.4|9=144|35=W|49=SERVER|56=CLIENT|34=1|52=20260122-10:00:00.000|"
         "262=MD002|55=GOOGL|268=2|"
         "269=0|270=2800.50|271=200|290=1|"
         "269=1|270=2801.00|271=150|290=1|"
@@ -162,11 +162,11 @@ TEST_CASE("MarketDataSnapshotFullRefresh Parser - Iterate entries", "[market_dat
 
 TEST_CASE("MarketDataIncrementalRefresh Parser - Basic update", "[market_data][incremental][regression]") {
     std::string raw_msg = make_fix_message(
-        "8=FIX.4.4|9=120|35=X|49=SERVER|56=CLIENT|34=2|52=20260122-10:00:01.000|"
+        "8=FIX.4.4|9=150|35=X|49=SERVER|56=CLIENT|34=2|52=20260122-10:00:01.000|"
         "262=MD001|268=2|"
         "279=0|269=0|55=AAPL|270=150.30|271=1200|"
         "279=1|269=1|55=AAPL|270=150.35|271=400|"
-        "10=125|"
+        "10=128|"
     );
 
     auto result = MarketDataIncrementalRefresh::from_buffer(
@@ -183,12 +183,12 @@ TEST_CASE("MarketDataIncrementalRefresh Parser - Basic update", "[market_data][i
 
 TEST_CASE("MarketDataIncrementalRefresh Parser - Update actions", "[market_data][incremental][actions][regression]") {
     std::string raw_msg = make_fix_message(
-        "8=FIX.4.4|9=150|35=X|49=SERVER|56=CLIENT|34=3|52=20260122-10:00:02.000|"
+        "8=FIX.4.4|9=170|35=X|49=SERVER|56=CLIENT|34=3|52=20260122-10:00:02.000|"
         "268=3|"
         "279=0|269=0|55=MSFT|270=400.00|271=100|"
         "279=1|269=0|55=MSFT|270=399.95|271=150|"
         "279=2|269=1|55=MSFT|270=400.10|"
-        "10=158|"
+        "10=160|"
     );
 
     auto result = MarketDataIncrementalRefresh::from_buffer(
@@ -226,9 +226,9 @@ TEST_CASE("MarketDataIncrementalRefresh Parser - Update actions", "[market_data]
 
 TEST_CASE("MarketDataRequestReject Parser - Unknown symbol", "[market_data][reject][regression]") {
     std::string raw_msg = make_fix_message(
-        "8=FIX.4.4|9=100|35=Y|49=SERVER|56=CLIENT|34=1|52=20260122-10:00:00.000|"
+        "8=FIX.4.4|9=91|35=Y|49=SERVER|56=CLIENT|34=1|52=20260122-10:00:00.000|"
         "262=MD001|281=0|58=Symbol not found|"
-        "10=109|"
+        "10=070|"
     );
 
     auto result = MarketDataRequestReject::from_buffer(
@@ -246,9 +246,9 @@ TEST_CASE("MarketDataRequestReject Parser - Unknown symbol", "[market_data][reje
 
 TEST_CASE("MarketDataRequestReject Parser - Insufficient permissions", "[market_data][reject][regression]") {
     std::string raw_msg = make_fix_message(
-        "8=FIX.4.4|9=90|35=Y|49=SERVER|56=CLIENT|34=2|52=20260122-10:00:00.000|"
+        "8=FIX.4.4|9=105|35=Y|49=SERVER|56=CLIENT|34=2|52=20260122-10:00:00.000|"
         "262=MD002|281=2|58=Not authorized for this symbol|"
-        "10=171|"
+        "10=216|"
     );
 
     auto result = MarketDataRequestReject::from_buffer(

@@ -55,7 +55,7 @@ static std::string build_fix_message(std::string_view body) {
 
 static constexpr std::string_view EXEC_REPORT_BODY =
     "8=FIX.4.4\x01"
-    "9=200\x01"
+    "9=147\x01"
     "35=8\x01"
     "49=SENDER\x01"
     "56=TARGET\x01"
@@ -75,7 +75,7 @@ static constexpr std::string_view EXEC_REPORT_BODY =
 
 static constexpr std::string_view HEARTBEAT_BODY =
     "8=FIX.4.4\x01"
-    "9=60\x01"
+    "9=57\x01"
     "35=0\x01"
     "49=SENDER\x01"
     "56=TARGET\x01"
@@ -84,7 +84,7 @@ static constexpr std::string_view HEARTBEAT_BODY =
 
 static constexpr std::string_view NEW_ORDER_BODY =
     "8=FIX.4.4\x01"
-    "9=150\x01"
+    "9=136\x01"
     "35=D\x01"
     "49=SENDER\x01"
     "56=TARGET\x01"

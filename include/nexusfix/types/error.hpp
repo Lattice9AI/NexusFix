@@ -38,10 +38,11 @@ enum class ParseErrorCode : uint8_t {
     UnterminatedField,
     InvalidMsgType,
     GarbledMessage,
-    OverflowExhausted
+    OverflowExhausted,
+    BodyLengthMismatch
 };
 
-inline constexpr size_t PARSE_ERROR_COUNT = 13;
+inline constexpr size_t PARSE_ERROR_COUNT = 14;
 
 // ============================================================================
 // Compile-time ParseError Info (TICKET_023)
@@ -106,6 +107,10 @@ template<> struct ParseErrorInfo<ParseErrorCode::OverflowExhausted> {
     static constexpr std::string_view message = "Field table overflow exhausted";
 };
 
+template<> struct ParseErrorInfo<ParseErrorCode::BodyLengthMismatch> {
+    static constexpr std::string_view message = "BodyLength mismatch";
+};
+
 /// Generate ParseError lookup table at compile time
 consteval std::array<std::string_view, PARSE_ERROR_COUNT> create_parse_error_table() {
     std::array<std::string_view, PARSE_ERROR_COUNT> table{};
@@ -122,6 +127,7 @@ consteval std::array<std::string_view, PARSE_ERROR_COUNT> create_parse_error_tab
     table[10] = ParseErrorInfo<ParseErrorCode::InvalidMsgType>::message;
     table[11] = ParseErrorInfo<ParseErrorCode::GarbledMessage>::message;
     table[12] = ParseErrorInfo<ParseErrorCode::OverflowExhausted>::message;
+    table[13] = ParseErrorInfo<ParseErrorCode::BodyLengthMismatch>::message;
     return table;
 }
 

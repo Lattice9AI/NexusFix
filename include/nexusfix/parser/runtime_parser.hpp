@@ -51,6 +51,12 @@ public:
         }
         msg.header_ = header_result.header;
 
+        // Validate body length
+        auto bl_error = validate_body_length(data, header_result.header.body_length);
+        if (bl_error.code != ParseErrorCode::None) [[unlikely]] {
+            return std::unexpected{bl_error};
+        }
+
         // Parse all fields using SIMD-accelerated scanning
         auto soh_positions = simd::scan_soh(data);
         const char* __restrict ptr = data.data();
@@ -315,6 +321,12 @@ public:
             return std::unexpected{header_result.error};
         }
         parser.header_ = header_result.header;
+
+        // Validate body length
+        auto bl_error = validate_body_length(data, header_result.header.body_length);
+        if (bl_error.code != ParseErrorCode::None) [[unlikely]] {
+            return std::unexpected{bl_error};
+        }
 
         // Index all fields
         FieldIterator iter{data};

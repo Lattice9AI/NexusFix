@@ -131,7 +131,7 @@ void print_stats(const char* name, const BenchmarkStats& stats) {
 // Sample FIX ExecutionReport message for text parsing comparison
 constexpr std::string_view SAMPLE_EXEC_REPORT =
     "8=FIX.4.4\x01"
-    "9=200\x01"
+    "9=190\x01"
     "35=8\x01"
     "49=SENDER\x01"
     "56=TARGET\x01"
@@ -152,7 +152,7 @@ constexpr std::string_view SAMPLE_EXEC_REPORT =
     "14=50\x01"
     "6=150.525\x01"
     "60=20240115-10:30:00.123\x01"
-    "10=123\x01";
+    "10=248\x01";
 
 // Prepare SBE encoded ExecutionReport
 void prepare_sbe_exec_report(char* buffer, size_t length) {

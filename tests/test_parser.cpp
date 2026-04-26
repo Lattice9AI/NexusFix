@@ -21,23 +21,56 @@ using namespace nfx;
 namespace {
 
 // Sample ExecutionReport message (FIX 4.4)
-// 8=FIX.4.4|9=176|35=8|49=SENDER|56=TARGET|34=1|52=20231215-10:30:00.000|
-// 37=ORDER123|17=EXEC456|150=0|39=0|55=AAPL|54=1|38=100|44=150.50|151=100|14=0|6=0|10=004|
+// 8=FIX.4.4|9=136|35=8|49=SENDER|56=TARGET|34=1|52=20231215-10:30:00.000|
+// 37=ORDER123|17=EXEC456|150=0|39=0|55=AAPL|54=1|38=100|44=150.50|151=100|14=0|6=0|10=000|
 const std::string EXEC_REPORT =
-    "8=FIX.4.4\x01" "9=176\x01" "35=8\x01" "49=SENDER\x01" "56=TARGET\x01"
+    "8=FIX.4.4\x01" "9=136\x01" "35=8\x01" "49=SENDER\x01" "56=TARGET\x01"
     "34=1\x01" "52=20231215-10:30:00.000\x01" "37=ORDER123\x01" "17=EXEC456\x01"
     "150=0\x01" "39=0\x01" "55=AAPL\x01" "54=1\x01" "38=100\x01" "44=150.50\x01"
-    "151=100\x01" "14=0\x01" "6=0\x01" "10=004\x01";
+    "151=100\x01" "14=0\x01" "6=0\x01" "10=000\x01";
 
 // Simple Logon message
 const std::string LOGON =
-    "8=FIX.4.4\x01" "9=70\x01" "35=A\x01" "49=CLIENT\x01" "56=SERVER\x01"
-    "34=1\x01" "52=20231215-10:30:00\x01" "98=0\x01" "108=30\x01" "10=185\x01";
+    "8=FIX.4.4\x01" "9=63\x01" "35=A\x01" "49=CLIENT\x01" "56=SERVER\x01"
+    "34=1\x01" "52=20231215-10:30:00\x01" "98=0\x01" "108=30\x01" "10=187\x01";
 
 // Heartbeat message
 const std::string HEARTBEAT =
-    "8=FIX.4.4\x01" "9=55\x01" "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
-    "34=5\x01" "52=20231215-10:30:00\x01" "10=136\x01";
+    "8=FIX.4.4\x01" "9=51\x01" "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+    "34=5\x01" "52=20231215-10:30:00\x01" "10=132\x01";
+
+/// Build a FIX message with correct BodyLength and CheckSum.
+/// @param inner Fields between "9=<len>\x01" and "10=<cs>\x01"
+///        (i.e. starting from "35=..." through the last body field + SOH)
+/// @return Complete FIX message string
+std::string build_fix_message(const std::string& inner) {
+    // BodyLength covers everything from after "9=<len>\x01" to the SOH before "10="
+    // That's exactly the 'inner' string.
+    std::string bl = std::to_string(inner.size());
+    std::string prefix = "8=FIX.4.4\x01" "9=" + bl + "\x01";
+    std::string body = prefix + inner;
+    uint8_t sum = 0;
+    for (char c : body) sum += static_cast<uint8_t>(c);
+    char cs[3];
+    cs[0] = '0' + (sum / 100);
+    cs[1] = '0' + ((sum / 10) % 10);
+    cs[2] = '0' + (sum % 10);
+    return body + "10=" + std::string(cs, 3) + "\x01";
+}
+
+/// Build a FIX message with a specific (possibly wrong) BodyLength but correct CheckSum.
+std::string build_fix_message_with_bl(const std::string& inner, int body_length) {
+    std::string bl = std::to_string(body_length);
+    std::string prefix = "8=FIX.4.4\x01" "9=" + bl + "\x01";
+    std::string body = prefix + inner;
+    uint8_t sum = 0;
+    for (char c : body) sum += static_cast<uint8_t>(c);
+    char cs[3];
+    cs[0] = '0' + (sum / 100);
+    cs[1] = '0' + ((sum / 10) % 10);
+    cs[2] = '0' + (sum % 10);
+    return body + "10=" + std::string(cs, 3) + "\x01";
+}
 
 }  // namespace
 
@@ -219,7 +252,7 @@ TEST_CASE("Header parsing", "[parser][consteval][regression]") {
 
         REQUIRE(result.ok());
         REQUIRE(result.header.begin_string == "FIX.4.4");
-        REQUIRE(result.header.body_length == 176);
+        REQUIRE(result.header.body_length == 136);
         REQUIRE(result.header.msg_type == '8');
         REQUIRE(result.header.sender_comp_id == "SENDER");
         REQUIRE(result.header.target_comp_id == "TARGET");
@@ -310,19 +343,12 @@ TEST_CASE("IndexedParser O(1) lookup", "[parser][runtime][regression]") {
 
     SECTION("High-numbered tags (overflow)") {
         // Build a Logon with tag 553 (Username) and tag 554 (Password)
-        std::string body =
-            "8=FIX.4.4\x01" "9=999\x01" "35=A\x01" "49=CLIENT\x01"
+        std::string inner =
+            "35=A\x01" "49=CLIENT\x01"
             "56=SERVER\x01" "34=1\x01" "52=20231215-10:30:00\x01"
             "98=0\x01" "108=30\x01"
             "553=user1\x01" "554=pass1\x01";
-        // Compute checksum and append trailer
-        uint8_t sum = 0;
-        for (char c : body) sum += static_cast<uint8_t>(c);
-        char cs[3];
-        cs[0] = '0' + (sum / 100);
-        cs[1] = '0' + ((sum / 10) % 10);
-        cs[2] = '0' + (sum % 10);
-        std::string msg = body + "10=" + std::string(cs, 3) + "\x01";
+        std::string msg = build_fix_message(inner);
 
         auto r = IndexedParser::parse(
             std::span<const char>{msg.data(), msg.size()});
@@ -340,20 +366,14 @@ TEST_CASE("IndexedParser O(1) lookup", "[parser][runtime][regression]") {
 
     SECTION("Overflow exhaustion returns error") {
         // Build a message with > 8 distinct tags >= 512 to exhaust overflow
-        std::string body =
-            "8=FIX.4.4\x01" "9=999\x01" "35=A\x01" "49=CLIENT\x01"
+        std::string inner =
+            "35=A\x01" "49=CLIENT\x01"
             "56=SERVER\x01" "34=1\x01" "52=20231215-10:30:00\x01";
         // Add 9 high tags (overflow capacity is 8, so 9th should fail)
         for (int t = 553; t <= 561; ++t) {
-            body += std::to_string(t) + "=val\x01";
+            inner += std::to_string(t) + "=val\x01";
         }
-        uint8_t sum = 0;
-        for (char c : body) sum += static_cast<uint8_t>(c);
-        char cs[3];
-        cs[0] = '0' + (sum / 100);
-        cs[1] = '0' + ((sum / 10) % 10);
-        cs[2] = '0' + (sum % 10);
-        std::string msg = body + "10=" + std::string(cs, 3) + "\x01";
+        std::string msg = build_fix_message(inner);
 
         auto r = IndexedParser::parse(
             std::span<const char>{msg.data(), msg.size()});
@@ -551,7 +571,7 @@ TEST_CASE("IndexedFieldAccessor", "[parser][simd][structural][regression]") {
     }
 
     SECTION("Get as integer") {
-        REQUIRE(accessor.get_int(9) == 176);   // BodyLength
+        REQUIRE(accessor.get_int(9) == 136);   // BodyLength
         REQUIRE(accessor.get_int(34) == 1);    // MsgSeqNum
         REQUIRE(accessor.get_int(38) == 100);  // OrderQty
     }
@@ -1009,5 +1029,124 @@ TEST_CASE("parse_md_entry helper", "[parser][repeating_group][regression]") {
         REQUIRE(md.symbol.empty());
         REQUIRE(md.position_no == 0);
         REQUIRE(md.number_of_orders == 0);
+    }
+}
+
+// ============================================================================
+// BodyLength Validation Tests (TICKET_469_1)
+// ============================================================================
+
+TEST_CASE("BodyLength validation", "[parser][edge-case][regression]") {
+    SECTION("Valid messages pass body length check") {
+        // HEARTBEAT, LOGON, EXEC_REPORT all have correct body lengths
+        auto hb = ParsedMessage::parse(
+            std::span<const char>{HEARTBEAT.data(), HEARTBEAT.size()});
+        REQUIRE(hb.has_value());
+
+        auto logon = ParsedMessage::parse(
+            std::span<const char>{LOGON.data(), LOGON.size()});
+        REQUIRE(logon.has_value());
+
+        auto exec = ParsedMessage::parse(
+            std::span<const char>{EXEC_REPORT.data(), EXEC_REPORT.size()});
+        REQUIRE(exec.has_value());
+    }
+
+    SECTION("Valid messages pass IndexedParser body length check") {
+        auto hb = IndexedParser::parse(
+            std::span<const char>{HEARTBEAT.data(), HEARTBEAT.size()});
+        REQUIRE(hb.has_value());
+
+        auto logon = IndexedParser::parse(
+            std::span<const char>{LOGON.data(), LOGON.size()});
+        REQUIRE(logon.has_value());
+
+        auto exec = IndexedParser::parse(
+            std::span<const char>{EXEC_REPORT.data(), EXEC_REPORT.size()});
+        REQUIRE(exec.has_value());
+    }
+
+    SECTION("BodyLength > actual body rejects via ParsedMessage") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=5\x01" "52=20231215-10:30:00\x01";
+        // Use inflated body length (999 instead of actual)
+        std::string msg = build_fix_message_with_bl(inner, 999);
+
+        auto r = ParsedMessage::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!r.has_value());
+        REQUIRE(r.error().code == ParseErrorCode::BodyLengthMismatch);
+        REQUIRE(r.error().tag == 9);
+    }
+
+    SECTION("BodyLength > actual body rejects via IndexedParser") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=5\x01" "52=20231215-10:30:00\x01";
+        std::string msg = build_fix_message_with_bl(inner, 999);
+
+        auto r = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!r.has_value());
+        REQUIRE(r.error().code == ParseErrorCode::BodyLengthMismatch);
+    }
+
+    SECTION("BodyLength < actual body rejects via ParsedMessage") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=5\x01" "52=20231215-10:30:00\x01";
+        // Use deflated body length (5 instead of actual)
+        std::string msg = build_fix_message_with_bl(inner, 5);
+
+        auto r = ParsedMessage::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!r.has_value());
+        REQUIRE(r.error().code == ParseErrorCode::BodyLengthMismatch);
+    }
+
+    SECTION("BodyLength < actual body rejects via IndexedParser") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=5\x01" "52=20231215-10:30:00\x01";
+        std::string msg = build_fix_message_with_bl(inner, 5);
+
+        auto r = IndexedParser::parse(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(!r.has_value());
+        REQUIRE(r.error().code == ParseErrorCode::BodyLengthMismatch);
+    }
+
+    SECTION("validate_body_length standalone - correct length") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=5\x01" "52=20231215-10:30:00\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto hdr = parse_header(
+            std::span<const char>{msg.data(), msg.size()});
+        REQUIRE(hdr.ok());
+
+        auto err = validate_body_length(
+            std::span<const char>{msg.data(), msg.size()},
+            hdr.header.body_length);
+        REQUIRE(err.code == ParseErrorCode::None);
+    }
+
+    SECTION("validate_body_length standalone - wrong length") {
+        std::string inner =
+            "35=0\x01" "49=SENDER\x01" "56=TARGET\x01"
+            "34=5\x01" "52=20231215-10:30:00\x01";
+        std::string msg = build_fix_message(inner);
+
+        auto err = validate_body_length(
+            std::span<const char>{msg.data(), msg.size()}, 999);
+        REQUIRE(err.code == ParseErrorCode::BodyLengthMismatch);
+        REQUIRE(err.tag == 9);
+    }
+
+    SECTION("Error message text") {
+        REQUIRE(parse_error_message(ParseErrorCode::BodyLengthMismatch)
+                == "BodyLength mismatch");
     }
 }

@@ -53,7 +53,7 @@ TEST(header_format) {
     // QuickFIX expects: 8=FIX.4.4|9=nnn|35=X|...
     constexpr std::string_view msg =
         "8=FIX.4.4\x01"
-        "9=100\x01"
+        "9=67\x01"
         "35=A\x01"
         "49=SENDER\x01"
         "56=TARGET\x01"
@@ -61,7 +61,7 @@ TEST(header_format) {
         "52=20240115-10:30:00.000\x01"
         "98=0\x01"
         "108=30\x01"
-        "10=100\x01";
+        "10=110\x01";
 
     IndexedParser parser;
     auto result = parser.parse(std::span<const char>{msg.data(), msg.size()});
@@ -76,7 +76,7 @@ TEST(header_format) {
 
     auto body_length = parsed.get_field(tag::BodyLength::value);
     ASSERT_TRUE(body_length.has_value());
-    ASSERT_EQ(body_length->as_int(), 100);
+    ASSERT_EQ(body_length->as_int(), 67);
 
     auto msg_type = parsed.get_field(tag::MsgType::value);
     ASSERT_TRUE(msg_type.has_value());
@@ -87,7 +87,7 @@ TEST(header_format) {
 TEST(logon_message_format) {
     constexpr std::string_view msg =
         "8=FIX.4.4\x01"
-        "9=70\x01"
+        "9=61\x01"
         "35=A\x01"
         "49=BANZAI\x01"
         "56=EXEC\x01"
@@ -95,7 +95,7 @@ TEST(logon_message_format) {
         "52=20240115-10:30:00\x01"
         "98=0\x01"
         "108=30\x01"
-        "10=000\x01";
+        "10=252\x01";
 
     IndexedParser parser;
     auto result = parser.parse(std::span<const char>{msg.data(), msg.size()});
@@ -117,13 +117,13 @@ TEST(logon_message_format) {
 TEST(heartbeat_message_format) {
     constexpr std::string_view msg =
         "8=FIX.4.4\x01"
-        "9=55\x01"
+        "9=49\x01"
         "35=0\x01"
         "49=BANZAI\x01"
         "56=EXEC\x01"
         "34=5\x01"
         "52=20240115-10:30:00\x01"
-        "10=000\x01";
+        "10=220\x01";
 
     IndexedParser parser;
     auto result = parser.parse(std::span<const char>{msg.data(), msg.size()});
@@ -138,14 +138,14 @@ TEST(heartbeat_message_format) {
 TEST(test_request_message_format) {
     constexpr std::string_view msg =
         "8=FIX.4.4\x01"
-        "9=65\x01"
+        "9=62\x01"
         "35=1\x01"
         "49=BANZAI\x01"
         "56=EXEC\x01"
         "34=10\x01"
         "52=20240115-10:30:00\x01"
         "112=TEST123\x01"
-        "10=000\x01";
+        "10=172\x01";
 
     IndexedParser parser;
     auto result = parser.parse(std::span<const char>{msg.data(), msg.size()});
@@ -160,7 +160,7 @@ TEST(test_request_message_format) {
 TEST(new_order_single_format) {
     constexpr std::string_view msg =
         "8=FIX.4.4\x01"
-        "9=140\x01"
+        "9=127\x01"
         "35=D\x01"
         "49=BANZAI\x01"
         "56=EXEC\x01"
@@ -175,7 +175,7 @@ TEST(new_order_single_format) {
         "40=2\x01"
         "44=150.50\x01"
         "59=0\x01"
-        "10=000\x01";
+        "10=005\x01";
 
     IndexedParser parser;
     auto result = parser.parse(std::span<const char>{msg.data(), msg.size()});
@@ -213,7 +213,7 @@ TEST(new_order_single_format) {
 TEST(execution_report_format) {
     constexpr std::string_view msg =
         "8=FIX.4.4\x01"
-        "9=180\x01"
+        "9=130\x01"
         "35=8\x01"
         "49=EXEC\x01"
         "56=BANZAI\x01"
@@ -230,7 +230,7 @@ TEST(execution_report_format) {
         "151=100\x01"
         "14=0\x01"
         "6=0\x01"
-        "10=000\x01";
+        "10=244\x01";
 
     IndexedParser parser;
     auto result = parser.parse(std::span<const char>{msg.data(), msg.size()});
@@ -268,7 +268,7 @@ TEST(execution_report_format) {
 TEST(order_cancel_request_format) {
     constexpr std::string_view msg =
         "8=FIX.4.4\x01"
-        "9=130\x01"
+        "9=115\x01"
         "35=F\x01"
         "49=BANZAI\x01"
         "56=EXEC\x01"
@@ -280,7 +280,7 @@ TEST(order_cancel_request_format) {
         "54=1\x01"
         "60=20240115-10:30:00\x01"
         "38=100\x01"
-        "10=000\x01";
+        "10=145\x01";
 
     IndexedParser parser;
     auto result = parser.parse(std::span<const char>{msg.data(), msg.size()});
@@ -301,14 +301,14 @@ TEST(order_cancel_request_format) {
 TEST(logout_message_format) {
     constexpr std::string_view msg =
         "8=FIX.4.4\x01"
-        "9=70\x01"
+        "9=68\x01"
         "35=5\x01"
         "49=BANZAI\x01"
         "56=EXEC\x01"
         "34=100\x01"
         "52=20240115-10:30:00\x01"
         "58=Normal logout\x01"
-        "10=000\x01";
+        "10=012\x01";
 
     IndexedParser parser;
     auto result = parser.parse(std::span<const char>{msg.data(), msg.size()});
@@ -323,7 +323,7 @@ TEST(logout_message_format) {
 TEST(reject_message_format) {
     constexpr std::string_view msg =
         "8=FIX.4.4\x01"
-        "9=90\x01"
+        "9=83\x01"
         "35=3\x01"
         "49=EXEC\x01"
         "56=BANZAI\x01"
@@ -332,7 +332,7 @@ TEST(reject_message_format) {
         "45=5\x01"
         "373=1\x01"
         "58=Invalid tag number\x01"
-        "10=000\x01";
+        "10=104\x01";
 
     IndexedParser parser;
     auto result = parser.parse(std::span<const char>{msg.data(), msg.size()});
@@ -351,7 +351,7 @@ TEST(reject_message_format) {
 TEST(resend_request_format) {
     constexpr std::string_view msg =
         "8=FIX.4.4\x01"
-        "9=65\x01"
+        "9=58\x01"
         "35=2\x01"
         "49=BANZAI\x01"
         "56=EXEC\x01"
@@ -359,7 +359,7 @@ TEST(resend_request_format) {
         "52=20240115-10:30:00\x01"
         "7=1\x01"
         "16=0\x01"
-        "10=000\x01";
+        "10=092\x01";
 
     IndexedParser parser;
     auto result = parser.parse(std::span<const char>{msg.data(), msg.size()});
@@ -378,7 +378,7 @@ TEST(resend_request_format) {
 TEST(sequence_reset_format) {
     constexpr std::string_view msg =
         "8=FIX.4.4\x01"
-        "9=70\x01"
+        "9=61\x01"
         "35=4\x01"
         "49=EXEC\x01"
         "56=BANZAI\x01"
@@ -386,7 +386,7 @@ TEST(sequence_reset_format) {
         "52=20240115-10:30:00\x01"
         "123=Y\x01"
         "36=10\x01"
-        "10=000\x01";
+        "10=015\x01";
 
     IndexedParser parser;
     auto result = parser.parse(std::span<const char>{msg.data(), msg.size()});
@@ -622,22 +622,22 @@ TEST(stream_multi_message) {
     std::string stream;
     stream +=
         "8=FIX.4.4\x01"
-        "9=55\x01"
+        "9=41\x01"
         "35=0\x01"
         "49=A\x01"
         "56=B\x01"
         "34=1\x01"
         "52=20240115-10:30:00\x01"
-        "10=000\x01";
+        "10=121\x01";
     stream +=
         "8=FIX.4.4\x01"
-        "9=55\x01"
+        "9=41\x01"
         "35=0\x01"
         "49=A\x01"
         "56=B\x01"
         "34=2\x01"
         "52=20240115-10:30:01\x01"
-        "10=000\x01";
+        "10=123\x01";
 
     StreamParser parser;
     parser.feed(std::span<const char>{stream.data(), stream.size()});
@@ -672,13 +672,13 @@ TEST(stream_partial_message) {
 
     std::string complete_msg =
         "8=FIX.4.4\x01"
-        "9=55\x01"
+        "9=41\x01"
         "35=0\x01"
         "49=A\x01"
         "56=B\x01"
         "34=1\x01"
         "52=20240115-10:30:00\x01"
-        "10=000\x01";
+        "10=121\x01";
 
     StreamParser parser;
     parser.feed(std::span<const char>{complete_msg.data(), complete_msg.size()});

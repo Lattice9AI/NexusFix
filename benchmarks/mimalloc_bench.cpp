@@ -31,10 +31,10 @@ constexpr size_t BURST_COUNT = 1000;   // Messages per burst
 
 // Sample FIX ExecutionReport
 constexpr char SAMPLE_MESSAGE[] =
-    "8=FIX.4.4\x01" "9=150\x01" "35=8\x01" "49=SENDER\x01" "56=TARGET\x01"
+    "8=FIX.4.4\x01" "9=149\x01" "35=8\x01" "49=SENDER\x01" "56=TARGET\x01"
     "34=1\x01" "52=20260206-12:00:00.000\x01" "37=ORDER123\x01" "11=CLIENT456\x01"
     "17=EXEC789\x01" "150=0\x01" "39=0\x01" "55=AAPL\x01" "54=1\x01"
-    "38=100\x01" "44=150.50\x01" "14=0\x01" "151=100\x01" "6=0\x01" "10=123\x01";
+    "38=100\x01" "44=150.50\x01" "14=0\x01" "151=100\x01" "6=0\x01" "10=012\x01";
 
 void print_stats(const char* label, const LatencyStats& s) {
     std::cout << "  " << label << ":\n";
