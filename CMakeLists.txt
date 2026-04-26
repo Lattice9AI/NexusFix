@@ -17,7 +17,7 @@ option(NFX_ENABLE_MIMALLOC "Enable mimalloc allocator for per-session heaps" OFF
 option(NFX_BUILD_BENCHMARKS "Build benchmarks" ON)
 option(NFX_BUILD_TESTS "Build tests" ON)
 option(NFX_BUILD_EXAMPLES "Build examples" ON)
-option(NFX_ENABLE_COVERAGE "Enable code coverage instrumentation (GCC/Clang)" OFF)
+option(NFX_ENABLE_COVERAGE "Enable coverage instrumentation for CI/local test analysis only; not for production or benchmarks" OFF)
 
 # Dependencies via FetchContent
 include(FetchContent)

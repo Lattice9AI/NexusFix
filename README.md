@@ -268,6 +268,7 @@ if (result) {
 - [SECURITY.md](SECURITY.md) for coordinated vulnerability disclosure
 - [SUPPORT.md](SUPPORT.md) for bug reports, usage questions, and response expectations
 - [ROADMAP.md](ROADMAP.md) for near-term and mid-term open-source priorities
+- [docs/COVERAGE_LIMITATIONS.md](docs/COVERAGE_LIMITATIONS.md) for coverage-build caveats and usage boundaries
 - [`docs/compare/`](docs/compare/) for benchmark reports and optimization writeups
 - [`docs/design/`](docs/design/) for architecture notes and design tickets that are public
 
@@ -291,6 +292,7 @@ if (result) {
 | `NFX_BUILD_BENCHMARKS` | ON | Build benchmark suite |
 | `NFX_BUILD_TESTS` | ON | Build unit tests |
 | `NFX_BUILD_EXAMPLES` | ON | Build examples |
+| `NFX_ENABLE_COVERAGE` | OFF | Coverage instrumentation for CI/local test analysis only; not for production or benchmarks |
 
 ```bash
 # Build with all optimizations

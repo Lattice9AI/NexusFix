@@ -80,6 +80,8 @@ CLAUDE.md
 **/TICKET_*.md
 # Exception: benchmark reports in docs/compare are public
 !docs/compare/TICKET_*.md
+# Exception: selected public design tickets in docs/design are tracked in this repo
+!docs/design/TICKET_468_COVERAGE_BUILD_LIMITATIONS.md
 
 # Chinese docs (keep in private repo)
 *_CN.md
