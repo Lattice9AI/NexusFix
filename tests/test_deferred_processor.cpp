@@ -149,15 +149,106 @@ TEST_CASE("MessageBuffer", "[utils][thread_local_pool][regression]") {
     }
 
     SECTION("truncation at MAX_SIZE") {
-        // Won't crash even with large input
         std::string large(5000, 'X');
         buf.set(large.c_str(), large.size());
         REQUIRE(buf.size() == MessageBuffer::MAX_SIZE);
+        REQUIRE(buf.truncated());
+    }
+
+    SECTION("exactly at MAX_SIZE sets no truncation") {
+        std::string exact(MessageBuffer::MAX_SIZE, 'B');
+        buf.set(exact.c_str(), exact.size());
+        REQUIRE(buf.size() == MessageBuffer::MAX_SIZE);
+        REQUIRE_FALSE(buf.truncated());
+        REQUIRE(std::memcmp(buf.data, exact.data(), MessageBuffer::MAX_SIZE) == 0);
+    }
+
+    SECTION("one byte over MAX_SIZE sets truncation") {
+        std::string over(MessageBuffer::MAX_SIZE + 1, 'C');
+        buf.set(over.c_str(), over.size());
+        REQUIRE(buf.size() == MessageBuffer::MAX_SIZE);
+        REQUIRE(buf.truncated());
+        REQUIRE(std::memcmp(buf.data, over.data(), MessageBuffer::MAX_SIZE) == 0);
+    }
+
+    SECTION("small message clears truncation flag") {
+        std::string large(5000, 'D');
+        buf.set(large.c_str(), large.size());
+        REQUIRE(buf.truncated());
+
+        buf.set("hello", 5);
+        REQUIRE_FALSE(buf.truncated());
+        REQUIRE(buf.size() == 5);
+    }
+
+    SECTION("clear resets truncation flag") {
+        std::string large(5000, 'E');
+        buf.set(large.c_str(), large.size());
+        REQUIRE(buf.truncated());
+
+        buf.clear();
+        REQUIRE_FALSE(buf.truncated());
     }
 
     SECTION("begin/end iterators") {
         buf.set("hello", 5);
         REQUIRE(buf.end() - buf.begin() == 5);
+    }
+}
+
+// ============================================================================
+// LargeBuffer Truncation Tests
+// ============================================================================
+
+TEST_CASE("LargeBuffer truncation", "[utils][thread_local_pool][regression]") {
+    // Stack-allocating a 64KB LargeBuffer is fine for tests
+    auto buf = std::make_unique<nfx::util::LargeBuffer>();
+
+    SECTION("initial state") {
+        REQUIRE(buf->size() == 0);
+        REQUIRE_FALSE(buf->truncated());
+        REQUIRE(nfx::util::LargeBuffer::MAX_SIZE == 65536);
+    }
+
+    SECTION("normal set does not truncate") {
+        std::string msg(1000, 'A');
+        buf->set(msg.c_str(), msg.size());
+        REQUIRE(buf->size() == 1000);
+        REQUIRE_FALSE(buf->truncated());
+    }
+
+    SECTION("exactly at MAX_SIZE sets no truncation") {
+        std::string exact(nfx::util::LargeBuffer::MAX_SIZE, 'B');
+        buf->set(exact.c_str(), exact.size());
+        REQUIRE(buf->size() == nfx::util::LargeBuffer::MAX_SIZE);
+        REQUIRE_FALSE(buf->truncated());
+    }
+
+    SECTION("one byte over MAX_SIZE sets truncation") {
+        std::string over(nfx::util::LargeBuffer::MAX_SIZE + 1, 'C');
+        buf->set(over.c_str(), over.size());
+        REQUIRE(buf->size() == nfx::util::LargeBuffer::MAX_SIZE);
+        REQUIRE(buf->truncated());
+    }
+
+    SECTION("small message clears truncation flag") {
+        std::string large(nfx::util::LargeBuffer::MAX_SIZE + 100, 'D');
+        buf->set(large.c_str(), large.size());
+        REQUIRE(buf->truncated());
+
+        buf->set("hello", 5);
+        REQUIRE_FALSE(buf->truncated());
+        REQUIRE(buf->size() == 5);
+    }
+
+    SECTION("clear resets truncation flag") {
+        std::string large(nfx::util::LargeBuffer::MAX_SIZE + 100, 'E');
+        buf->set(large.c_str(), large.size());
+        REQUIRE(buf->truncated());
+
+        buf->clear();
+        REQUIRE_FALSE(buf->truncated());
+        REQUIRE(buf->size() == 0);
     }
 }
 

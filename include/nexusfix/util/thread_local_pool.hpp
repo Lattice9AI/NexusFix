@@ -257,16 +257,20 @@ struct alignas(CACHE_LINE_SIZE) MessageBuffer {
 
     char data[MAX_SIZE];
     size_t length{0};
+    bool truncated_{false};
 
     void set(const char* src, size_t len) noexcept {
-        length = (len <= MAX_SIZE) ? len : MAX_SIZE;
+        truncated_ = (len > MAX_SIZE);
+        length = truncated_ ? MAX_SIZE : len;
         std::memcpy(data, src, length);
     }
 
     void clear() noexcept {
         length = 0;
+        truncated_ = false;
     }
 
+    [[nodiscard]] bool truncated() const noexcept { return truncated_; }
     [[nodiscard]] const char* begin() const noexcept { return data; }
     [[nodiscard]] const char* end() const noexcept { return data + length; }
     [[nodiscard]] size_t size() const noexcept { return length; }
@@ -287,16 +291,20 @@ struct alignas(CACHE_LINE_SIZE) LargeBuffer {
 
     char data[MAX_SIZE];
     size_t length{0};
+    bool truncated_{false};
 
     void set(const char* src, size_t len) noexcept {
-        length = (len <= MAX_SIZE) ? len : MAX_SIZE;
+        truncated_ = (len > MAX_SIZE);
+        length = truncated_ ? MAX_SIZE : len;
         std::memcpy(data, src, length);
     }
 
     void clear() noexcept {
         length = 0;
+        truncated_ = false;
     }
 
+    [[nodiscard]] bool truncated() const noexcept { return truncated_; }
     [[nodiscard]] size_t size() const noexcept { return length; }
 };
 
