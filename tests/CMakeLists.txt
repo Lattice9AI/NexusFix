@@ -20,6 +20,7 @@ add_executable(nexusfix_tests
     test_deferred_processor.cpp
     test_property.cpp
     test_io_uring.cpp
+    test_fix42.cpp
     test_fix50.cpp
     test_fixt11.cpp
     test_sbe_codecs.cpp

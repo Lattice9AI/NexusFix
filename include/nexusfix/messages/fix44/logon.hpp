@@ -180,9 +180,14 @@ struct Logon {
             return *this;
         }
 
+        Builder& begin_string(std::string_view v) noexcept {
+            begin_string_ = v;
+            return *this;
+        }
+
         /// Build the message into provided buffer
         [[nodiscard]] std::span<const char> build(MessageAssembler& asm_) const noexcept {
-            asm_.start()
+            asm_.start(begin_string_)
                 .field(tag::MsgType::value, MSG_TYPE)
                 .field(tag::SenderCompID::value, sender_comp_id_)
                 .field(tag::TargetCompID::value, target_comp_id_)
@@ -216,6 +221,7 @@ struct Logon {
         bool reset_seq_num_flag_{false};
         std::string_view username_;
         std::string_view password_;
+        std::string_view begin_string_{fix::FIX_4_4};
     };
 };
 
@@ -307,8 +313,13 @@ struct Logout {
             return *this;
         }
 
+        Builder& begin_string(std::string_view v) noexcept {
+            begin_string_ = v;
+            return *this;
+        }
+
         [[nodiscard]] std::span<const char> build(MessageAssembler& asm_) const noexcept {
-            asm_.start()
+            asm_.start(begin_string_)
                 .field(tag::MsgType::value, MSG_TYPE)
                 .field(tag::SenderCompID::value, sender_comp_id_)
                 .field(tag::TargetCompID::value, target_comp_id_)
@@ -328,6 +339,7 @@ struct Logout {
         uint32_t msg_seq_num_{1};
         std::string_view sending_time_;
         std::string_view text_;
+        std::string_view begin_string_{fix::FIX_4_4};
     };
 };
 

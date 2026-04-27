@@ -27,6 +27,7 @@
 #include "nexusfix/messages/fix44/heartbeat.hpp"
 #include "nexusfix/messages/fix44/execution_report.hpp"
 #include "nexusfix/messages/fix44/new_order_single.hpp"
+#include "nexusfix/messages/fix42/fix42.hpp"
 
 // Session
 #include "nexusfix/session/state.hpp"

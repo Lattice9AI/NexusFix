@@ -101,8 +101,13 @@ struct Heartbeat {
             return *this;
         }
 
+        Builder& begin_string(std::string_view v) noexcept {
+            begin_string_ = v;
+            return *this;
+        }
+
         [[nodiscard]] std::span<const char> build(MessageAssembler& asm_) const noexcept {
-            asm_.start()
+            asm_.start(begin_string_)
                 .field(tag::MsgType::value, MSG_TYPE)
                 .field(tag::SenderCompID::value, sender_comp_id_)
                 .field(tag::TargetCompID::value, target_comp_id_)
@@ -122,6 +127,7 @@ struct Heartbeat {
         uint32_t msg_seq_num_{1};
         std::string_view sending_time_;
         std::string_view test_req_id_;
+        std::string_view begin_string_{fix::FIX_4_4};
     };
 };
 
@@ -218,8 +224,13 @@ struct TestRequest {
             return *this;
         }
 
+        Builder& begin_string(std::string_view v) noexcept {
+            begin_string_ = v;
+            return *this;
+        }
+
         [[nodiscard]] std::span<const char> build(MessageAssembler& asm_) const noexcept {
-            asm_.start()
+            asm_.start(begin_string_)
                 .field(tag::MsgType::value, MSG_TYPE)
                 .field(tag::SenderCompID::value, sender_comp_id_)
                 .field(tag::TargetCompID::value, target_comp_id_)
@@ -236,6 +247,7 @@ struct TestRequest {
         uint32_t msg_seq_num_{1};
         std::string_view sending_time_;
         std::string_view test_req_id_;
+        std::string_view begin_string_{fix::FIX_4_4};
     };
 };
 
@@ -345,8 +357,13 @@ struct ResendRequest {
             return *this;
         }
 
+        Builder& begin_string(std::string_view v) noexcept {
+            begin_string_ = v;
+            return *this;
+        }
+
         [[nodiscard]] std::span<const char> build(MessageAssembler& asm_) const noexcept {
-            asm_.start()
+            asm_.start(begin_string_)
                 .field(tag::MsgType::value, MSG_TYPE)
                 .field(tag::SenderCompID::value, sender_comp_id_)
                 .field(tag::TargetCompID::value, target_comp_id_)
@@ -365,6 +382,7 @@ struct ResendRequest {
         std::string_view sending_time_;
         uint32_t begin_seq_no_{1};
         uint32_t end_seq_no_{0};
+        std::string_view begin_string_{fix::FIX_4_4};
     };
 };
 
@@ -470,8 +488,13 @@ struct SequenceReset {
             return *this;
         }
 
+        Builder& begin_string(std::string_view v) noexcept {
+            begin_string_ = v;
+            return *this;
+        }
+
         [[nodiscard]] std::span<const char> build(MessageAssembler& asm_) const noexcept {
-            asm_.start()
+            asm_.start(begin_string_)
                 .field(tag::MsgType::value, MSG_TYPE)
                 .field(tag::SenderCompID::value, sender_comp_id_)
                 .field(tag::TargetCompID::value, target_comp_id_)
@@ -493,6 +516,7 @@ struct SequenceReset {
         std::string_view sending_time_;
         uint32_t new_seq_no_{1};
         bool gap_fill_flag_{false};
+        std::string_view begin_string_{fix::FIX_4_4};
     };
 };
 
@@ -623,8 +647,13 @@ struct Reject {
             return *this;
         }
 
+        Builder& begin_string(std::string_view v) noexcept {
+            begin_string_ = v;
+            return *this;
+        }
+
         [[nodiscard]] std::span<const char> build(MessageAssembler& asm_) const noexcept {
-            asm_.start()
+            asm_.start(begin_string_)
                 .field(tag::MsgType::value, MSG_TYPE)
                 .field(tag::SenderCompID::value, sender_comp_id_)
                 .field(tag::TargetCompID::value, target_comp_id_)
@@ -656,6 +685,7 @@ struct Reject {
         int ref_tag_id_{0};
         int session_reject_reason_{0};
         std::string_view text_;
+        std::string_view begin_string_{fix::FIX_4_4};
     };
 };
 

@@ -92,6 +92,7 @@ using AvgPx            = Tag<6>;    // Average fill price
 using LastPx           = Tag<31>;   // Last fill price
 using LastQty          = Tag<32>;   // Last fill quantity
 using OrdRejReason     = Tag<103>;  // Order reject reason
+using ExecTransType        = Tag<20>;   // Execution transaction type (FIX 4.2)
 using ExecRestatementReason = Tag<378>; // Exec restatement reason
 
 // ============================================================================
@@ -341,6 +342,12 @@ template<> struct TagInfo<1> {
     static constexpr bool is_required = false;
 };
 
+template<> struct TagInfo<20> {
+    static constexpr std::string_view name = "ExecTransType";
+    static constexpr bool is_header = false;
+    static constexpr bool is_required = false;
+};
+
 template<> struct TagInfo<21> {
     static constexpr std::string_view name = "HandlInst";
     static constexpr bool is_header = false;
@@ -431,6 +438,7 @@ consteval std::array<TagEntry, MAX_COMMON_TAG> create_tag_table() {
     table[14] = {TagInfo<14>::name, TagInfo<14>::is_header, TagInfo<14>::is_required};
     table[16] = {TagInfo<16>::name, TagInfo<16>::is_header, TagInfo<16>::is_required};
     table[17] = {TagInfo<17>::name, TagInfo<17>::is_header, TagInfo<17>::is_required};
+    table[20] = {TagInfo<20>::name, TagInfo<20>::is_header, TagInfo<20>::is_required};
     table[21] = {TagInfo<21>::name, TagInfo<21>::is_header, TagInfo<21>::is_required};
     table[31] = {TagInfo<31>::name, TagInfo<31>::is_header, TagInfo<31>::is_required};
     table[32] = {TagInfo<32>::name, TagInfo<32>::is_header, TagInfo<32>::is_required};

@@ -184,6 +184,7 @@ public:
 
         // Build logon message
         auto msg = fix44::Logon::Builder{}
+            .begin_string(config_.begin_string)
             .sender_comp_id(config_.sender_comp_id)
             .target_comp_id(config_.target_comp_id)
             .msg_seq_num(sequences_.next_outbound())
@@ -208,6 +209,7 @@ public:
         }
 
         auto msg = fix44::Logout::Builder{}
+            .begin_string(config_.begin_string)
             .sender_comp_id(config_.sender_comp_id)
             .target_comp_id(config_.target_comp_id)
             .msg_seq_num(sequences_.next_outbound())
@@ -380,6 +382,7 @@ private:
 
             // Send logon response
             auto response = fix44::Logon::Builder{}
+                .begin_string(config_.begin_string)
                 .sender_comp_id(config_.sender_comp_id)
                 .target_comp_id(config_.target_comp_id)
                 .msg_seq_num(sequences_.next_outbound())
@@ -409,6 +412,7 @@ private:
             transition(SessionEvent::LogoutReceived);
 
             auto response = fix44::Logout::Builder{}
+                .begin_string(config_.begin_string)
                 .sender_comp_id(config_.sender_comp_id)
                 .target_comp_id(config_.target_comp_id)
                 .msg_seq_num(sequences_.next_outbound())
@@ -436,6 +440,7 @@ private:
         std::string_view test_req_id = msg.get_string(tag::TestReqID::value);
 
         auto response = fix44::Heartbeat::Builder{}
+            .begin_string(config_.begin_string)
             .sender_comp_id(config_.sender_comp_id)
             .target_comp_id(config_.target_comp_id)
             .msg_seq_num(sequences_.next_outbound())
@@ -481,6 +486,7 @@ private:
         // Uses the requestor's BeginSeqNo, not our outbound counter, so bypass
         // send_message() which assumes a prior next_outbound() call.
         auto response = fix44::SequenceReset::Builder{}
+            .begin_string(config_.begin_string)
             .sender_comp_id(config_.sender_comp_id)
             .target_comp_id(config_.target_comp_id)
             .msg_seq_num(begin)
@@ -540,6 +546,7 @@ private:
         auto [begin, end] = sequences_.gap_range(received);
 
         auto request = fix44::ResendRequest::Builder{}
+            .begin_string(config_.begin_string)
             .sender_comp_id(config_.sender_comp_id)
             .target_comp_id(config_.target_comp_id)
             .msg_seq_num(sequences_.next_outbound())
@@ -605,6 +612,7 @@ private:
 
     void send_heartbeat(std::string_view test_req_id = "") noexcept {
         auto msg = fix44::Heartbeat::Builder{}
+            .begin_string(config_.begin_string)
             .sender_comp_id(config_.sender_comp_id)
             .target_comp_id(config_.target_comp_id)
             .msg_seq_num(sequences_.next_outbound())
@@ -624,6 +632,7 @@ private:
             static_cast<unsigned long>(stats_.test_requests_sent + 1));
 
         auto msg = fix44::TestRequest::Builder{}
+            .begin_string(config_.begin_string)
             .sender_comp_id(config_.sender_comp_id)
             .target_comp_id(config_.target_comp_id)
             .msg_seq_num(sequences_.next_outbound())
