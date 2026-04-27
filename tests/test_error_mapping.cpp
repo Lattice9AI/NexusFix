@@ -104,9 +104,15 @@ TEST_CASE("map_gai_error unknown code", "[platform][error][regression]") {
 // ============================================================================
 
 TEST_CASE("make_socket_error from specific errno", "[platform][error][regression]") {
+#if NFX_PLATFORM_WINDOWS
+    auto err = make_socket_error(WSAECONNREFUSED);
+    REQUIRE(err.code == TransportErrorCode::ConnectionRefused);
+    REQUIRE(err.system_errno == WSAECONNREFUSED);
+#else
     auto err = make_socket_error(ECONNREFUSED);
     REQUIRE(err.code == TransportErrorCode::ConnectionRefused);
     REQUIRE(err.system_errno == ECONNREFUSED);
+#endif
 }
 
 TEST_CASE("make_gai_error factory", "[platform][error][regression]") {
@@ -132,7 +138,11 @@ TEST_CASE("make_transport_error default errno", "[platform][error][regression]")
 // ============================================================================
 
 TEST_CASE("socket_error_string returns non-empty", "[platform][error][regression]") {
+#if NFX_PLATFORM_WINDOWS
+    const char* desc = socket_error_string(WSAECONNREFUSED);
+#else
     const char* desc = socket_error_string(ECONNREFUSED);
+#endif
     REQUIRE(desc != nullptr);
     REQUIRE(std::string_view(desc).size() > 0);
 }
@@ -148,9 +158,17 @@ TEST_CASE("socket_error_string for zero", "[platform][error][regression]") {
 // ============================================================================
 
 TEST_CASE("make_socket_error captures current errno", "[platform][error][regression]") {
+#if NFX_PLATFORM_WINDOWS
+    WSASetLastError(WSAETIMEDOUT);
+    auto err = make_socket_error();
+    REQUIRE(err.code == TransportErrorCode::Timeout);
+    REQUIRE(err.system_errno == WSAETIMEDOUT);
+    WSASetLastError(0);
+#else
     errno = ETIMEDOUT;
     auto err = make_socket_error();
     REQUIRE(err.code == TransportErrorCode::Timeout);
     REQUIRE(err.system_errno == ETIMEDOUT);
     errno = 0;  // Reset
+#endif
 }
