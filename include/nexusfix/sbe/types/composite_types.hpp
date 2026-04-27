@@ -37,14 +37,17 @@ public:
     }
 
     // Encode: Write string to buffer with space padding
-    NFX_FORCE_INLINE static void encode(
+    // Returns true if data fit, false if truncated (value.size() > N)
+    NFX_FORCE_INLINE static bool encode(
         char* NFX_RESTRICT buffer, std::string_view value) noexcept {
-        const std::size_t copy_len = std::min(value.size(), N);
+        const bool truncated = value.size() > N;
+        const std::size_t copy_len = truncated ? N : value.size();
         std::memcpy(buffer, value.data(), copy_len);
         // Pad remaining bytes with spaces
         if (copy_len < N) {
             std::memset(buffer + copy_len, PADDING_CHAR, N - copy_len);
         }
+        return !truncated;
     }
 
     // Clear: Fill buffer with spaces

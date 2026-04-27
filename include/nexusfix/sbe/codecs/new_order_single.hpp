@@ -143,17 +143,22 @@ public:
         header.encodeHeader(BLOCK_LENGTH, TEMPLATE_ID);
         // Clear body to ensure clean padding
         std::memset(mutableBody(), 0, BLOCK_LENGTH);
+        truncated_ = false;
         return *this;
     }
 
     // Field encoders (fluent interface, return *this)
     NFX_FORCE_INLINE NewOrderSingleCodec& clOrdId(std::string_view value) noexcept {
-        FixedString20::encode(mutableBody() + Offset::ClOrdId, value);
+        if (!FixedString20::encode(mutableBody() + Offset::ClOrdId, value)) {
+            truncated_ = true;
+        }
         return *this;
     }
 
     NFX_FORCE_INLINE NewOrderSingleCodec& symbol(std::string_view value) noexcept {
-        FixedString8::encode(mutableBody() + Offset::Symbol, value);
+        if (!FixedString8::encode(mutableBody() + Offset::Symbol, value)) {
+            truncated_ = true;
+        }
         return *this;
     }
 
@@ -180,6 +185,11 @@ public:
     NFX_FORCE_INLINE NewOrderSingleCodec& transactTime(Timestamp value) noexcept {
         SbeTimestamp::encode(mutableBody() + Offset::TransactTime, value);
         return *this;
+    }
+
+    // Check if any string field was truncated during encoding
+    [[nodiscard]] NFX_FORCE_INLINE bool truncated() const noexcept {
+        return truncated_;
     }
 
     // Get encoded message as span
@@ -209,6 +219,7 @@ private:
 
     const char* buffer_{nullptr};
     std::size_t length_{0};
+    bool truncated_{false};
 };
 
 // ============================================================================

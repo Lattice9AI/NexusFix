@@ -91,6 +91,60 @@ TEST_CASE("FixedString8 encode/decode", "[sbe][fixedstring]") {
     }
 }
 
+TEST_CASE("FixedString8 encode truncation detection", "[sbe][fixedstring][truncation]") {
+    alignas(8) char buffer[256]{};
+
+    SECTION("Exact fit returns true") {
+        REQUIRE(FixedString8::encode(buffer, "12345678") == true);
+        REQUIRE(FixedString8::decode(buffer) == "12345678");
+    }
+
+    SECTION("Shorter than capacity returns true") {
+        REQUIRE(FixedString8::encode(buffer, "ABC") == true);
+        REQUIRE(FixedString8::decode(buffer) == "ABC");
+    }
+
+    SECTION("Empty string returns true") {
+        REQUIRE(FixedString8::encode(buffer, "") == true);
+        REQUIRE(FixedString8::decode(buffer) == "");
+    }
+
+    SECTION("One byte over capacity returns false") {
+        REQUIRE(FixedString8::encode(buffer, "123456789") == false);
+        // Data is truncated to 8 bytes
+        REQUIRE(FixedString8::decode(buffer) == "12345678");
+    }
+
+    SECTION("Much longer than capacity returns false") {
+        REQUIRE(FixedString8::encode(buffer, "VERYLONGSYMBOLNAME") == false);
+        REQUIRE(FixedString8::decode(buffer) == "VERYLONG");
+    }
+
+    SECTION("Single char returns true") {
+        REQUIRE(FixedString8::encode(buffer, "X") == true);
+        REQUIRE(FixedString8::decode(buffer) == "X");
+    }
+}
+
+TEST_CASE("FixedString20 encode truncation detection", "[sbe][fixedstring][truncation]") {
+    alignas(8) char buffer[256]{};
+
+    SECTION("Exact 20-char fit returns true") {
+        REQUIRE(FixedString20::encode(buffer, "12345678901234567890") == true);
+        REQUIRE(FixedString20::decode(buffer).size() == 20u);
+    }
+
+    SECTION("21 chars returns false") {
+        REQUIRE(FixedString20::encode(buffer, "123456789012345678901") == false);
+        REQUIRE(FixedString20::decode(buffer).size() == 20u);
+    }
+
+    SECTION("Short ClOrdID returns true") {
+        REQUIRE(FixedString20::encode(buffer, "ORD001") == true);
+        REQUIRE(FixedString20::decode(buffer) == "ORD001");
+    }
+}
+
 TEST_CASE("FixedString20 encode/decode", "[sbe][fixedstring]") {
     alignas(8) char buffer[256]{};
 
@@ -570,5 +624,178 @@ TEST_CASE("NewOrderSingleCodec edge cases", "[sbe][nos][edge][regression]") {
 
         auto decoder = NewOrderSingleCodec::wrapForDecode(buffer, sizeof(buffer));
         REQUIRE(decoder.price().raw == negative.raw);
+    }
+}
+
+// ============================================================================
+// Codec-Level Truncation Tests (TICKET_471_3)
+// ============================================================================
+
+TEST_CASE("NewOrderSingleCodec truncation flag", "[sbe][nos][truncation]") {
+    alignas(8) char buffer[NewOrderSingleCodec::TOTAL_SIZE]{};
+
+    SECTION("No truncation when strings fit") {
+        auto codec = NewOrderSingleCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .clOrdId("ORD001")
+            .symbol("AAPL");
+
+        REQUIRE_FALSE(codec.truncated());
+    }
+
+    SECTION("Exact-fit strings do not set truncated") {
+        auto codec = NewOrderSingleCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .clOrdId("12345678901234567890")  // exactly 20
+            .symbol("12345678");              // exactly 8
+
+        REQUIRE_FALSE(codec.truncated());
+    }
+
+    SECTION("Oversized clOrdId sets truncated") {
+        auto codec = NewOrderSingleCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .clOrdId("123456789012345678901")  // 21 chars
+            .symbol("AAPL");
+
+        REQUIRE(codec.truncated());
+        // Data is truncated to 20 chars
+        auto decoder = NewOrderSingleCodec::wrapForDecode(buffer, sizeof(buffer));
+        REQUIRE(decoder.clOrdId().size() == 20u);
+    }
+
+    SECTION("Oversized symbol sets truncated") {
+        auto codec = NewOrderSingleCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .clOrdId("ORD001")
+            .symbol("123456789");  // 9 chars
+
+        REQUIRE(codec.truncated());
+        auto decoder = NewOrderSingleCodec::wrapForDecode(buffer, sizeof(buffer));
+        REQUIRE(decoder.symbol().size() == 8u);
+    }
+
+    SECTION("Both fields oversized sets truncated") {
+        auto codec = NewOrderSingleCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .clOrdId("VERY_LONG_ORDER_ID_EXCEEDS_20_CHARS")
+            .symbol("TOOLONGSYMBOL");
+
+        REQUIRE(codec.truncated());
+    }
+
+    SECTION("Empty strings do not set truncated") {
+        auto codec = NewOrderSingleCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .clOrdId("")
+            .symbol("");
+
+        REQUIRE_FALSE(codec.truncated());
+    }
+
+    SECTION("Truncation flag is sticky across chained calls") {
+        auto codec = NewOrderSingleCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .clOrdId("123456789012345678901")  // truncated
+            .symbol("AAPL");                   // fits
+
+        REQUIRE(codec.truncated());
+    }
+
+    SECTION("encodeHeader resets truncated flag for codec reuse") {
+        auto codec = NewOrderSingleCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .clOrdId("123456789012345678901");  // truncated
+
+        REQUIRE(codec.truncated());
+
+        // Re-encode with valid data
+        codec.encodeHeader()
+            .clOrdId("ORD001")
+            .symbol("AAPL");
+
+        REQUIRE_FALSE(codec.truncated());
+    }
+}
+
+TEST_CASE("ExecutionReportCodec truncation flag", "[sbe][execrpt][truncation]") {
+    alignas(8) char buffer[ExecutionReportCodec::TOTAL_SIZE]{};
+
+    SECTION("No truncation when all strings fit") {
+        auto codec = ExecutionReportCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .orderId("EX001")
+            .execId("EXEC001")
+            .clOrdId("ORD001")
+            .symbol("AAPL");
+
+        REQUIRE_FALSE(codec.truncated());
+    }
+
+    SECTION("Oversized orderId sets truncated") {
+        auto codec = ExecutionReportCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .orderId("ORDER_ID_THAT_IS_WAY_TOO_LONG");
+
+        REQUIRE(codec.truncated());
+        auto decoder = ExecutionReportCodec::wrapForDecode(buffer, sizeof(buffer));
+        REQUIRE(decoder.orderId().size() == 20u);
+    }
+
+    SECTION("Oversized execId sets truncated") {
+        auto codec = ExecutionReportCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .execId("EXECUTION_ID_EXCEEDS_20_CHARS");
+
+        REQUIRE(codec.truncated());
+    }
+
+    SECTION("Oversized symbol sets truncated") {
+        auto codec = ExecutionReportCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .symbol("TOOLONGSYMBOL");
+
+        REQUIRE(codec.truncated());
+        auto decoder = ExecutionReportCodec::wrapForDecode(buffer, sizeof(buffer));
+        REQUIRE(decoder.symbol().size() == 8u);
+    }
+
+    SECTION("Truncation flag is sticky - first field truncated") {
+        auto codec = ExecutionReportCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .orderId("ORDER_ID_THAT_IS_WAY_TOO_LONG")  // truncated
+            .execId("EXEC001")                          // fits
+            .clOrdId("ORD001")                          // fits
+            .symbol("AAPL");                            // fits
+
+        REQUIRE(codec.truncated());
+    }
+
+    SECTION("Exact-fit strings do not set truncated") {
+        auto codec = ExecutionReportCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .orderId("12345678901234567890")   // exactly 20
+            .execId("12345678901234567890")    // exactly 20
+            .clOrdId("12345678901234567890")   // exactly 20
+            .symbol("12345678");               // exactly 8
+
+        REQUIRE_FALSE(codec.truncated());
+    }
+
+    SECTION("encodeHeader resets truncated flag for codec reuse") {
+        auto codec = ExecutionReportCodec::wrapForEncode(buffer, sizeof(buffer))
+            .encodeHeader()
+            .orderId("ORDER_ID_THAT_IS_WAY_TOO_LONG");
+
+        REQUIRE(codec.truncated());
+
+        // Re-encode with valid data
+        codec.encodeHeader()
+            .orderId("EX001")
+            .execId("EXEC001")
+            .clOrdId("ORD001")
+            .symbol("AAPL");
+
+        REQUIRE_FALSE(codec.truncated());
     }
 }
