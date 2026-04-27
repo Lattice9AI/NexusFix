@@ -24,6 +24,7 @@
 
 #include <ranges>
 #include <algorithm>
+#include <vector>
 #include <string_view>
 #include <span>
 #include <cstdint>
@@ -184,6 +185,41 @@ template<ranges::input_range R>
     return std::forward<R>(range);
 #endif
 }
+
+// ============================================================================
+// Range-to-Container Conversion (C++23)
+// ============================================================================
+
+/// Convert range to container using C++23 ranges::to when available
+#if defined(__cpp_lib_ranges_to_container) && __cpp_lib_ranges_to_container >= 202202L
+
+template<template<typename...> class Container, ranges::input_range R>
+[[nodiscard]] auto to(R&& range) {
+    return std::forward<R>(range) | ranges::to<Container>();
+}
+
+template<ranges::input_range R>
+[[nodiscard]] auto to_vector(R&& range) {
+    return std::forward<R>(range) | ranges::to<std::vector>();
+}
+
+#else
+
+template<template<typename...> class Container, ranges::input_range R>
+[[nodiscard]] auto to(R&& range) {
+    Container<ranges::range_value_t<R>> result;
+    for (auto&& elem : range) {
+        result.push_back(std::forward<decltype(elem)>(elem));
+    }
+    return result;
+}
+
+template<ranges::input_range R>
+[[nodiscard]] auto to_vector(R&& range) {
+    return to<std::vector>(std::forward<R>(range));
+}
+
+#endif
 
 // ============================================================================
 // Span Utilities

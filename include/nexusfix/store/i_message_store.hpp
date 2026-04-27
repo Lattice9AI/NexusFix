@@ -12,6 +12,7 @@
 #include <cstdint>
 #include <span>
 #include <optional>
+#include <string>
 #include <vector>
 #include <string_view>
 

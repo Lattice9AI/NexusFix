@@ -363,6 +363,15 @@ private:
 #pragma warning(pop)
 #endif
 
+// Verify constexpr bitset support enables compile-time StrictMode FieldTable
+#if defined(__cpp_lib_constexpr_bitset) && __cpp_lib_constexpr_bitset >= 202207L
+static_assert([] {
+    FieldTable<64, 4, true> table;
+    auto err = table.set(1, {});
+    return err.code == ParseErrorCode::None;
+}(), "StrictMode FieldTable must be usable in constexpr context with constexpr bitset");
+#endif
+
 // Static assertion: FieldTable should be cache-line aligned
 static_assert(alignof(FieldTable<512, 8, false>) >= CACHE_LINE_SIZE,
     "FieldTable must be cache-line aligned for optimal memory access");

@@ -14,6 +14,7 @@
 
 #include "nexusfix/store/i_message_store.hpp"
 
+#include <atomic>
 #include <mutex>
 #include <shared_mutex>
 #include <algorithm>

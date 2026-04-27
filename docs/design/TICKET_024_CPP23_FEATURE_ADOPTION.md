@@ -19,11 +19,11 @@ Systematic adoption of C++23 (ISO/IEC 14882:2024) features to maximize performan
 
 | Category | Total Features | Adopted | Blocked | Remaining | Adoption Rate |
 |----------|---------------|---------|---------|-----------|---------------|
-| Language Features | 17 | 9 | 1 | 7 | 53% |
-| Library Features | 45+ | 19 | 8 | 18+ | ~42% |
-| **Total** | **62+** | **28** | **9** | **25+** | **~45%** |
+| Language Features | 17 | 10 | 0 | 7 | 59% |
+| Library Features | 45+ | 22 | 6 | 17+ | ~49% |
+| **Total** | **62+** | **32** | **6** | **24+** | **~52%** |
 
-**Note**: 9 features (flat_map, flat_set, mdspan, ranges::to, ranges::starts_with, ranges::ends_with, deducing this, constexpr bitset, start_lifetime_as) are blocked pending GCC 14+ / libstdc++ 14+ support. Current environment: GCC 13.3.
+**Note**: CI uses GCC 14.2 (g++-14). Features `ranges::to`, `constexpr bitset`, and `deducing this` are now adopted with `__cpp_lib_*` / `__cpp_explicit_this_parameter` guards. Remaining blocked items (`flat_map`, `flat_set`, `mdspan`, `ranges::starts_with`, `ranges::ends_with`) require GCC 15 / libstdc++ 15. `start_lifetime_as` is not available in any stdlib implementation.
 
 ---
 
@@ -47,7 +47,7 @@ Systematic adoption of C++23 (ISO/IEC 14882:2024) features to maximize performan
 
 | # | Feature | Paper | Priority | Target | Benefit |
 |---|---------|-------|----------|--------|---------|
-| L7 | **Deducing This** | P0847R7 | **HIGH** | CRTP simplification | Eliminates boilerplate (BLOCKED: GCC 14+) |
+| L7 | ~~Deducing This~~ | P0847R7 | **ADOPTED** | `field_types.hpp` | Feature-guarded with `__cpp_explicit_this_parameter` |
 | L9 | **Multidimensional `[]`** | P2128R6 | MEDIUM | `mdspan` usage | Cleaner matrix access |
 | L10 | **Static `operator()`** | P1169R4 | MEDIUM | Functors | Zero-overhead callables (N/A: no existing functors) |
 | L11 | **`auto(x)` decay-copy** | P0849R8 | LOW | Generic code | Explicit decay |
@@ -125,7 +125,7 @@ Systematic adoption of C++23 (ISO/IEC 14882:2024) features to maximize performan
 
 | # | Feature | Paper | Priority | Target | Benefit |
 |---|---------|-------|----------|--------|---------|
-| R1 | **`ranges::to`** | P1206R7 | **HIGH** | Container conversion | `range \| to<vector>()` |
+| R1 | ~~`ranges::to`~~ | P1206R7 | **ADOPTED** | `ranges_utils.hpp` | Feature-guarded with `__cpp_lib_ranges_to_container` |
 | R2 | **`views::enumerate`** | P2164R9 | **HIGH** | Indexed iteration | `for (auto [i, v] : enumerate(vec))` |
 | R3 | **`views::zip`** | P2321R2 | MEDIUM | Parallel iteration | Zip multiple ranges |
 | R4 | **`views::chunk`** | P2442R1 | MEDIUM | Batch processing | Fixed-size chunks |
@@ -176,7 +176,7 @@ Systematic adoption of C++23 (ISO/IEC 14882:2024) features to maximize performan
 | # | Feature | Paper | Priority | Target | Benefit |
 |---|---------|-------|----------|--------|---------|
 | CE1 | **`constexpr std::unique_ptr`** | P2273R3 | MEDIUM | RAII in constexpr | Compile-time allocation |
-| CE2 | **`constexpr std::bitset`** | P2417R2 | MEDIUM | Flag sets | Compile-time bitsets |
+| CE2 | ~~`constexpr std::bitset`~~ | P2417R2 | **ADOPTED** | `field_view.hpp` | Feature-guarded with `__cpp_lib_constexpr_bitset` |
 | CE3 | **`constexpr <cmath>`** | P0533R9 | LOW | Math operations | `sqrt`, `pow` constexpr |
 | CE4 | **`constexpr to_chars/from_chars`** | P2291R3 | **HIGH** | Number parsing | Compile-time int conversion |
 
@@ -195,8 +195,6 @@ Systematic adoption of C++23 (ISO/IEC 14882:2024) features to maximize performan
 
 | # | Feature | Paper | Priority | Target | Benefit |
 |---|---------|-------|----------|--------|---------|
-| IO1 | **`std::print`** | P2093R14 | **HIGH** | Logging | Formatted output |
-| IO2 | **`std::println`** | P2093R14 | **HIGH** | Logging | With newline |
 | IO3 | **`std::spanstream`** | P0448R4 | MEDIUM | Buffer I/O | Span-based streams |
 | IO4 | **Format ranges** | P2286R8 | MEDIUM | Debug output | Print containers |
 | IO5 | **Format tuples** | P2286R8 | LOW | Debug output | Print tuples |
@@ -527,6 +525,7 @@ std::println("Price: {}, Qty: {}", price, qty);
 | 2026-02-02 | Phase 5 | R2, A1 partial | Added C++23 feature detection to ranges_utils.hpp |
 | 2026-02-03 | Phase 6 | L12, L13 | if consteval, uz literal; L7/L10 BLOCKED (GCC 14+) |
 | 2026-02-03 | Phase 7 | U3 | std::byteswap already adopted in bit_utils.hpp; CE2/U11 BLOCKED |
+| 2026-04-27 | Closure | R1, CE2, L7 | GCC 14.2 available: ranges::to, constexpr bitset, deducing this adopted with feature guards. Updated blocked items to GCC 15/libstdc++ 15. Fixed doc inconsistencies (std::print listed twice, ranges::contains status). |
 
 ## Benchmark Reports
 
@@ -546,7 +545,7 @@ std::println("Price: {}, Qty: {}", price, qty);
 - [x] L8: Add `[[assume]]` to hot paths (simd_scanner.hpp, field_view.hpp, mpsc_queue.hpp)
 - [x] U1: Replace `assert(false)` with `std::unreachable()` (memory_lock.hpp)
 - [x] U2: Replace `static_cast<underlying>` with `std::to_underlying()` (memory_lock.hpp, market_data.hpp, prefetch.hpp)
-- [ ] A1: Replace `find != end` with `ranges::contains` (skipped - need position values)
+- [x] A1: Add `ranges::contains` wrapper (moved to Phase 5, completed with feature detection)
 - [x] C4: Use `string::contains` where applicable (test_market_data.cpp)
 
 ### Phase 2: Error Handling
@@ -559,23 +558,23 @@ std::println("Price: {}, Qty: {}", price, qty);
 - [x] IO4: Add range formatting for debug output (format_hex in format_utils.hpp)
 - [x] C5: Use `resize_and_overwrite` in buffer builders (format_to_string, build_string in format_utils.hpp)
 
-### Phase 4: Container Optimization (BLOCKED - needs GCC 14+/libstdc++ 14+)
-- [ ] C1: Evaluate `std::flat_map` for symbol lookup (not available in GCC 13.3)
-- [ ] C2: Evaluate `std::flat_set` for tag sets (not available in GCC 13.3)
-- [ ] C3: Implement `std::mdspan` for market data (not available in GCC 13.3)
+### Phase 4: Container Optimization (BLOCKED - needs GCC 15/libstdc++ 15)
+- [ ] C1: Evaluate `std::flat_map` for symbol lookup (BLOCKED: needs libstdc++ 15)
+- [ ] C2: Evaluate `std::flat_set` for tag sets (BLOCKED: needs libstdc++ 15)
+- [ ] C3: Implement `std::mdspan` for market data (BLOCKED: needs libstdc++ 15)
 
 ### Phase 5: Advanced Ranges
-- [ ] R1: Adopt `ranges::to` for container conversions (not available in GCC 13.3)
+- [x] R1: Adopt `ranges::to` for container conversions (ranges_utils.hpp with `__cpp_lib_ranges_to_container` guard)
 - [x] R2: Use `views::enumerate` for indexed iteration (added to ranges_utils.hpp with feature detection)
 - [ ] R3: Use `views::zip` for parallel iteration (available, added to ranges_utils.hpp)
 - [x] R4: Use `views::chunk` for batch processing (added to ranges_utils.hpp with feature detection)
 - [x] R5: Use `views::slide` for sliding windows (added to ranges_utils.hpp with feature detection)
 - [x] R6: Use `views::stride` for sampling (added to ranges_utils.hpp with feature detection)
-- [ ] A2: Use `ranges::starts_with` for protocol matching (not available in GCC 13.3)
+- [ ] A2: Use `ranges::starts_with` for protocol matching (BLOCKED: needs libstdc++ 15)
 - [x] A1: Add `ranges::contains` wrapper (added to ranges_utils.hpp with feature detection)
 
 ### Phase 6: Language Features
-- [ ] L7: Refactor CRTP with deducing this (BLOCKED - needs GCC 14+)
+- [x] L7: Add deducing this alternative for StrongType (field_types.hpp with `__cpp_explicit_this_parameter` guard)
 - [ ] L10: Add static `operator()` to functors (N/A - no existing functors with operator())
 - [x] L12: Replace `is_constant_evaluated` with `if consteval` (sbe_types.hpp read_le/write_le)
 - [x] L13: Use `uz` size_t literal for type safety (ranges_utils.hpp indices/enumerate/FixFieldView)
@@ -583,5 +582,5 @@ std::println("Price: {}, Qty: {}", price, qty);
 ### Phase 7: Compile-Time
 - [ ] CE4: Use `constexpr to_chars` where possible (N/A - uses custom IntToString for compile-time)
 - [x] U3: Use `std::byteswap` for endian conversion (bit_utils.hpp byteswap16/32/64 with fallback)
-- [ ] CE2: Use `constexpr bitset` (BLOCKED - needs GCC 14+)
-- [ ] U11: Use `std::start_lifetime_as` for buffer reuse (BLOCKED - needs GCC 14+)
+- [x] CE2: Use `constexpr bitset` (field_view.hpp static_assert with `__cpp_lib_constexpr_bitset` guard)
+- [ ] U11: Use `std::start_lifetime_as` for buffer reuse (BLOCKED: not available in any stdlib implementation)

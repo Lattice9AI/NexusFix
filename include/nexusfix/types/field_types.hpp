@@ -17,6 +17,26 @@ namespace nfx {
 // ============================================================================
 
 /// CRTP base for strong types with zero overhead
+///
+/// When __cpp_explicit_this_parameter is available (C++23 deducing this),
+/// the Derived template parameter is unused but kept for source compatibility.
+#if defined(__cpp_explicit_this_parameter) && __cpp_explicit_this_parameter >= 202110L
+
+template <typename Derived, typename T>
+struct StrongType {
+    T value;
+
+    constexpr StrongType() noexcept : value{} {}
+    constexpr explicit StrongType(T v) noexcept : value{v} {}
+
+    [[nodiscard]] constexpr T get(this auto const& self) noexcept { return self.value; }
+    [[nodiscard]] constexpr explicit operator T() const noexcept { return value; }
+
+    constexpr auto operator<=>(const StrongType&) const noexcept = default;
+};
+
+#else
+
 template <typename Derived, typename T>
 struct StrongType {
     T value;
@@ -29,6 +49,8 @@ struct StrongType {
 
     constexpr auto operator<=>(const StrongType&) const noexcept = default;
 };
+
+#endif
 
 // ============================================================================
 // Sequence Number (32-bit unsigned, wraps at 2^31-1 per FIX spec)
