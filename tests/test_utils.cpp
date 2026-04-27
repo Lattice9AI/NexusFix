@@ -5,6 +5,12 @@
 #include "nexusfix/util/branchless.hpp"
 #include "nexusfix/util/string_hash.hpp"
 #include "nexusfix/util/format_utils.hpp"
+#include "nexusfix/util/branch_hints.hpp"
+
+// compiler.hpp redefines NFX_ASSUME/NFX_UNREACHABLE - undef branch_hints versions first
+#undef NFX_ASSUME
+#undef NFX_UNREACHABLE
+#include "nexusfix/util/compiler.hpp"
 
 #include <cstring>
 
@@ -558,4 +564,191 @@ TEST_CASE("format_hex", "[utils][format][regression]") {
         REQUIRE(truncated.find("AB") != std::string::npos);
         REQUIRE(truncated.find("more") != std::string::npos);
     }
+}
+
+// ============================================================================
+// Branch Hints - Compilation Smoke Tests (TICKET_479 Phase 7C)
+// ============================================================================
+
+TEST_CASE("NFX_LIKELY and NFX_UNLIKELY preserve boolean semantics",
+          "[branch_hints][regression]") {
+    REQUIRE(NFX_LIKELY(true));
+    REQUIRE_FALSE(NFX_LIKELY(false));
+    REQUIRE_FALSE(NFX_UNLIKELY(false));
+    REQUIRE(NFX_UNLIKELY(true));
+
+    SECTION("integer expressions coerced correctly") {
+        int x = 42;
+        REQUIRE(NFX_LIKELY(x));
+        REQUIRE_FALSE(NFX_LIKELY(0));
+        REQUIRE_FALSE(NFX_UNLIKELY(0));
+        REQUIRE(NFX_UNLIKELY(x));
+    }
+}
+
+TEST_CASE("NFX_ASSUME and NFX_UNREACHABLE compile",
+          "[branch_hints][compiler][regression]") {
+    // NFX_ASSUME: compiler may use the hint for optimization
+    NFX_ASSUME(true);
+    NFX_ASSUME(1 + 1 == 2);
+
+    // NFX_UNREACHABLE: not invoked, just verify compilation in dead code
+    int val = 1;
+    if (val == 1) {
+        REQUIRE(val == 1);
+    } else {
+        NFX_UNREACHABLE();
+    }
+}
+
+TEST_CASE("NFX_HOT, NFX_COLD, NFX_FORCE_INLINE, NFX_NOINLINE compile",
+          "[branch_hints][regression]") {
+    struct Local {
+        NFX_HOT static int hot_func(int x) { return x + 1; }
+        NFX_COLD static int cold_func(int x) { return x - 1; }
+        NFX_FORCE_INLINE static int inlined_func(int x) { return x * 2; }
+        NFX_NOINLINE static int noinlined_func(int x) { return x / 2; }
+    };
+
+    REQUIRE(Local::hot_func(5) == 6);
+    REQUIRE(Local::cold_func(5) == 4);
+    REQUIRE(Local::inlined_func(3) == 6);
+    REQUIRE(Local::noinlined_func(10) == 5);
+}
+
+TEST_CASE("NFX_PURE and NFX_CONST function attributes compile",
+          "[branch_hints][regression]") {
+    struct Local {
+        NFX_PURE static int pure_func(const int* p) { return *p + 1; }
+        NFX_CONST static int const_func(int x) { return x * 2; }
+    };
+
+    int v = 10;
+    REQUIRE(Local::pure_func(&v) == 11);
+    REQUIRE(Local::const_func(5) == 10);
+}
+
+TEST_CASE("NFX_PREFETCH_READ and NFX_PREFETCH_WRITE do not crash",
+          "[branch_hints][regression]") {
+    alignas(64) int buffer[16] = {};
+    NFX_PREFETCH_READ(&buffer[0]);
+    NFX_PREFETCH_WRITE(&buffer[8]);
+    NFX_PREFETCH_READ_NTA(&buffer[4]);
+
+    // Verify no side effects on data
+    REQUIRE(buffer[0] == 0);
+    REQUIRE(buffer[8] == 0);
+}
+
+TEST_CASE("NFX_ASSUME_ALIGNED compiles on aligned buffer",
+          "[branch_hints][regression]") {
+    alignas(64) char buf[128] = {};
+    const void* aligned = NFX_ASSUME_ALIGNED(buf, 64);
+    REQUIRE(aligned == static_cast<const void*>(buf));
+}
+
+TEST_CASE("NFX_CHECK_NULL, NFX_CHECK_ERROR, NFX_CHECK_SUCCESS macros",
+          "[branch_hints][regression]") {
+    SECTION("NFX_CHECK_NULL on nullptr enters branch") {
+        int* p = nullptr;
+        bool entered = false;
+        NFX_CHECK_NULL(p) { entered = true; }
+        REQUIRE(entered);
+    }
+
+    SECTION("NFX_CHECK_NULL on valid pointer skips branch") {
+        int val = 42;
+        int* p = &val;
+        bool entered = false;
+        NFX_CHECK_NULL(p) { entered = true; }
+        REQUIRE_FALSE(entered);
+    }
+
+    SECTION("NFX_CHECK_ERROR on true enters branch") {
+        bool entered = false;
+        NFX_CHECK_ERROR(true) { entered = true; }
+        REQUIRE(entered);
+    }
+
+    SECTION("NFX_CHECK_SUCCESS on true enters branch") {
+        bool entered = false;
+        NFX_CHECK_SUCCESS(true) { entered = true; }
+        REQUIRE(entered);
+    }
+}
+
+TEST_CASE("NFX_ASSERT compiles and passes on true condition",
+          "[branch_hints][regression]") {
+    NFX_ASSERT(true);
+    NFX_ASSERT(1 + 1 == 2);
+
+    int x = 42;
+    NFX_ASSERT(x == 42);
+    NFX_ASSERT(x > 0);
+}
+
+TEST_CASE("NFX_LOOP_VECTORIZE, NFX_LOOP_INDEPENDENT, NFX_LOOP_UNROLL compile",
+          "[branch_hints][regression]") {
+    alignas(64) int data[64] = {};
+    for (int i = 0; i < 64; ++i) data[i] = i;
+
+    SECTION("NFX_LOOP_VECTORIZE on summation loop") {
+        int sum = 0;
+        NFX_LOOP_VECTORIZE
+        for (int i = 0; i < 64; ++i) {
+            sum += data[i];
+        }
+        REQUIRE(sum == 63 * 64 / 2);
+    }
+
+    SECTION("NFX_LOOP_INDEPENDENT on independent iterations") {
+        int out[64] = {};
+        NFX_LOOP_INDEPENDENT
+        for (int i = 0; i < 64; ++i) {
+            out[i] = data[i] * 2;
+        }
+        REQUIRE(out[0] == 0);
+        REQUIRE(out[63] == 126);
+    }
+
+    SECTION("NFX_LOOP_UNROLL on small loop") {
+        int sum = 0;
+        NFX_LOOP_UNROLL(4)
+        for (int i = 0; i < 16; ++i) {
+            sum += data[i];
+        }
+        REQUIRE(sum == 15 * 16 / 2);
+    }
+}
+
+TEST_CASE("NFX_RESTRICT compiles on pointer parameter",
+          "[branch_hints][regression]") {
+    struct Local {
+        static void copy(int* NFX_RESTRICT dst, const int* NFX_RESTRICT src, int n) {
+            for (int i = 0; i < n; ++i) {
+                dst[i] = src[i];
+            }
+        }
+    };
+
+    int src[4] = {10, 20, 30, 40};
+    int dst[4] = {};
+    Local::copy(dst, src, 4);
+    REQUIRE(dst[0] == 10);
+    REQUIRE(dst[3] == 40);
+}
+
+// ============================================================================
+// compiler.hpp - NFX_COMPILER_APPLE_CLANG (TICKET_479 Phase 7C)
+// ============================================================================
+
+TEST_CASE("NFX_COMPILER_APPLE_CLANG is defined", "[compiler][regression]") {
+    // On Linux with GCC/Clang (non-Apple), must be 0
+    // On Apple Clang, must be 1
+    // Either way, macro must be defined and evaluate to 0 or 1
+    [[maybe_unused]] constexpr int val = NFX_COMPILER_APPLE_CLANG;
+    REQUIRE((val == 0 || val == 1));
+#if !defined(__apple_build_version__)
+    REQUIRE(NFX_COMPILER_APPLE_CLANG == 0);
+#endif
 }

@@ -2149,3 +2149,173 @@ TEST_CASE("Unterminated field handling", "[parser][edge-case][regression]") {
         REQUIRE(fields.error.code == ParseErrorCode::UnterminatedField);
     }
 }
+
+// ============================================================================
+// Consteval Schema Tests (TICKET_479 Phase 5A)
+// ============================================================================
+
+TEST_CASE("FieldSpec requirement levels", "[parser][consteval][regression]") {
+    SECTION("Required tag validates as required") {
+        using Spec = FieldSpec<35, FieldRequirement::Required>;
+        STATIC_REQUIRE(Spec::tag == 35);
+        STATIC_REQUIRE(Spec::requirement == FieldRequirement::Required);
+        STATIC_REQUIRE(Spec::is_required == true);
+    }
+
+    SECTION("Optional tag allows absence") {
+        using Spec = FieldSpec<43, FieldRequirement::Optional>;
+        STATIC_REQUIRE(Spec::tag == 43);
+        STATIC_REQUIRE(Spec::requirement == FieldRequirement::Optional);
+        STATIC_REQUIRE(Spec::is_required == false);
+    }
+
+    SECTION("Conditional tag is not required") {
+        using Spec = FieldSpec<122, FieldRequirement::Conditional>;
+        STATIC_REQUIRE(Spec::requirement == FieldRequirement::Conditional);
+        STATIC_REQUIRE(Spec::is_required == false);
+    }
+
+    SECTION("Default requirement is Required") {
+        using Spec = FieldSpec<55>;
+        STATIC_REQUIRE(Spec::is_required == true);
+    }
+}
+
+TEST_CASE("MessageSchema has_tag compile-time lookup", "[parser][consteval][regression]") {
+    SECTION("HeaderSchema contains standard header tags") {
+        STATIC_REQUIRE(HeaderSchema::has_tag<8>());    // BeginString
+        STATIC_REQUIRE(HeaderSchema::has_tag<9>());    // BodyLength
+        STATIC_REQUIRE(HeaderSchema::has_tag<35>());   // MsgType
+        STATIC_REQUIRE(HeaderSchema::has_tag<49>());   // SenderCompID
+        STATIC_REQUIRE(HeaderSchema::has_tag<56>());   // TargetCompID
+        STATIC_REQUIRE(HeaderSchema::has_tag<34>());   // MsgSeqNum
+        STATIC_REQUIRE(HeaderSchema::has_tag<52>());   // SendingTime
+        STATIC_REQUIRE(HeaderSchema::has_tag<43>());   // PossDupFlag
+        STATIC_REQUIRE(HeaderSchema::has_tag<97>());   // PossResend
+        STATIC_REQUIRE(HeaderSchema::has_tag<122>());  // OrigSendingTime
+    }
+
+    SECTION("HeaderSchema does not contain body tags") {
+        STATIC_REQUIRE_FALSE(HeaderSchema::has_tag<55>());   // Symbol
+        STATIC_REQUIRE_FALSE(HeaderSchema::has_tag<150>());  // ExecType
+        STATIC_REQUIRE_FALSE(HeaderSchema::has_tag<11>());   // ClOrdID
+        STATIC_REQUIRE_FALSE(HeaderSchema::has_tag<10>());   // CheckSum (trailer)
+    }
+
+    SECTION("TrailerSchema contains only CheckSum") {
+        STATIC_REQUIRE(TrailerSchema::has_tag<10>());
+        STATIC_REQUIRE_FALSE(TrailerSchema::has_tag<8>());
+        STATIC_REQUIRE_FALSE(TrailerSchema::has_tag<35>());
+    }
+}
+
+TEST_CASE("MessageSchema tag_index and required flags", "[parser][consteval][regression]") {
+    SECTION("tag_index returns correct position") {
+        STATIC_REQUIRE(HeaderSchema::tag_index<8>() == 0);   // BeginString first
+        STATIC_REQUIRE(HeaderSchema::tag_index<9>() == 1);   // BodyLength second
+        STATIC_REQUIRE(HeaderSchema::tag_index<35>() == 2);  // MsgType third
+    }
+
+    SECTION("tag_index returns -1 for missing tag") {
+        STATIC_REQUIRE(HeaderSchema::tag_index<55>() == -1);
+        STATIC_REQUIRE(HeaderSchema::tag_index<999>() == -1);
+    }
+
+    SECTION("is_required distinguishes required from optional") {
+        STATIC_REQUIRE(HeaderSchema::is_required<8>());    // BeginString required
+        STATIC_REQUIRE(HeaderSchema::is_required<35>());   // MsgType required
+        STATIC_REQUIRE_FALSE(HeaderSchema::is_required<43>());   // PossDupFlag optional
+        STATIC_REQUIRE_FALSE(HeaderSchema::is_required<97>());   // PossResend optional
+        STATIC_REQUIRE_FALSE(HeaderSchema::is_required<122>());  // OrigSendingTime optional
+    }
+
+    SECTION("tags() returns all tag numbers in order") {
+        constexpr auto tags = HeaderSchema::tags();
+        STATIC_REQUIRE(tags.size() == 10);
+        STATIC_REQUIRE(tags[0] == 8);
+        STATIC_REQUIRE(tags[1] == 9);
+        STATIC_REQUIRE(tags[2] == 35);
+    }
+
+    SECTION("required_flags() matches tag requirements") {
+        constexpr auto flags = HeaderSchema::required_flags();
+        STATIC_REQUIRE(flags.size() == 10);
+        STATIC_REQUIRE(flags[0] == true);   // BeginString
+        STATIC_REQUIRE(flags[7] == false);  // PossDupFlag
+    }
+}
+
+TEST_CASE("Schema with zero fields compiles", "[parser][consteval][regression]") {
+    using EmptySchema = MessageSchema<>;
+    STATIC_REQUIRE(EmptySchema::field_count == 0);
+    STATIC_REQUIRE_FALSE(EmptySchema::has_tag<8>());
+    // Note: tag_index on empty schema triggers GCC -Wunused-value on empty fold
+
+    constexpr auto tags = EmptySchema::tags();
+    STATIC_REQUIRE(tags.size() == 0);
+}
+
+TEST_CASE("Schema with many fields compiles", "[parser][consteval][regression]") {
+    using LargeSchema = MessageSchema<
+        FieldSpec<8>, FieldSpec<9>, FieldSpec<35>, FieldSpec<49>,
+        FieldSpec<56>, FieldSpec<34>, FieldSpec<52>, FieldSpec<43>,
+        FieldSpec<97>, FieldSpec<122>, FieldSpec<37>, FieldSpec<17>,
+        FieldSpec<150>, FieldSpec<39>, FieldSpec<55>, FieldSpec<54>
+    >;
+    STATIC_REQUIRE(LargeSchema::field_count == 16);
+    STATIC_REQUIRE(LargeSchema::has_tag<150>());
+    STATIC_REQUIRE(LargeSchema::tag_index<55>() == 14);
+    STATIC_REQUIRE_FALSE(LargeSchema::has_tag<999>());
+}
+
+TEST_CASE("SchemaValidator validates required field presence", "[parser][consteval][regression]") {
+    using TestSchema = MessageSchema<
+        FieldSpec<35>,                                  // MsgType - Required
+        FieldSpec<49>,                                  // SenderCompID - Required
+        FieldSpec<43, FieldRequirement::Optional>       // PossDupFlag - Optional
+    >;
+
+    SECTION("All required fields present - passes validation") {
+        const std::string data = "35=A\x01" "49=CLIENT\x01" "43=Y\x01";
+        auto fields = extract_fields(
+            std::span<const char>{data.data(), data.size()});
+        REQUIRE(fields.ok());
+
+        auto err = SchemaValidator<TestSchema>::validate(fields);
+        REQUIRE(err.code == ParseErrorCode::None);
+    }
+
+    SECTION("Missing required field - fails validation") {
+        // Only has MsgType, missing SenderCompID
+        const std::string data = "35=A\x01" "43=Y\x01";
+        auto fields = extract_fields(
+            std::span<const char>{data.data(), data.size()});
+        REQUIRE(fields.ok());
+
+        auto err = SchemaValidator<TestSchema>::validate(fields);
+        REQUIRE(err.code == ParseErrorCode::MissingRequiredField);
+        REQUIRE(err.tag == 49);  // SenderCompID missing
+    }
+
+    SECTION("Optional field absent - passes validation") {
+        // Has both required, missing optional PossDupFlag
+        const std::string data = "35=A\x01" "49=CLIENT\x01";
+        auto fields = extract_fields(
+            std::span<const char>{data.data(), data.size()});
+        REQUIRE(fields.ok());
+
+        auto err = SchemaValidator<TestSchema>::validate(fields);
+        REQUIRE(err.code == ParseErrorCode::None);
+    }
+
+    SECTION("has_field checks specific tag presence") {
+        const std::string data = "35=A\x01" "49=CLIENT\x01";
+        auto fields = extract_fields(
+            std::span<const char>{data.data(), data.size()});
+        REQUIRE(fields.ok());
+
+        REQUIRE(SchemaValidator<TestSchema>::has_field(fields, 35));
+        REQUIRE(SchemaValidator<TestSchema>::has_field(fields, 49));
+        REQUIRE_FALSE(SchemaValidator<TestSchema>::has_field(fields, 43));
+    }
+}

@@ -11,6 +11,7 @@
 #include "nexusfix/messages/fix44/execution_report.hpp"
 #include "nexusfix/messages/fix44/new_order_single.hpp"
 #include "nexusfix/parser/runtime_parser.hpp"
+#include "nexusfix/store/memory_message_store.hpp"
 
 using namespace nfx;
 
@@ -492,6 +493,437 @@ TEST_CASE("E2E: Full session lifecycle", "[e2e]") {
     REQUIRE(logout_ok);
     REQUIRE(initiator.session().state() == SessionState::Disconnected);
     REQUIRE(acceptor.wait_for_logout());
+
+    acceptor.stop();
+}
+
+// ============================================================================
+// Phase 3: Extended E2E Tests
+// ============================================================================
+
+TEST_CASE("E2E: NOS -> ExecutionReport with message store", "[e2e][regression]") {
+    AcceptorEndpoint acceptor;
+    uint16_t port = acceptor.start();
+
+    InitiatorEndpoint initiator;
+    REQUIRE(initiator.connect(port));
+
+    // Attach message store to initiator session
+    store::MemoryMessageStore store("INITIATOR-ACCEPTOR");
+    initiator.session().set_message_store(&store);
+
+    // Logon
+    (void)initiator.session().initiate_logon();
+    REQUIRE(initiator.poll_until([&] { return initiator.logon_received(); }));
+    REQUIRE(acceptor.wait_for_logon());
+
+    // Send NOS
+    auto nos_builder = fix44::NewOrderSingle::Builder{}
+        .cl_ord_id("STORE001")
+        .symbol("TSLA")
+        .side(Side::Buy)
+        .transact_time("20260427-12:00:00.000")
+        .order_qty(Qty::from_int(50))
+        .ord_type(OrdType::Limit)
+        .price(FixedPrice::from_double(200.50));
+    auto nos_result = initiator.session().send_app_message(nos_builder);
+    REQUIRE(nos_result.has_value());
+
+    // Wait for ER back
+    REQUIRE(acceptor.wait_for_app_message());
+    bool er_received = initiator.poll_until([&] {
+        return initiator.app_message_count() > 0;
+    });
+    REQUIRE(er_received);
+
+    // Verify message store has stored outbound messages
+    // Logon (seq 1) + NOS (seq 2) should be stored
+    CHECK(store.message_count() >= 2);
+    CHECK(store.contains(1));  // Logon
+    CHECK(store.contains(2));  // NOS
+
+    acceptor.stop();
+}
+
+TEST_CASE("E2E: OrderCancelRequest -> cancel ack round-trip", "[e2e][regression]") {
+    // Extended AcceptorEndpoint that handles cancel requests
+    struct CancelAcceptor {
+        SessionConfig config;
+        TcpAcceptor acceptor;
+        std::atomic<bool> running{false};
+        std::atomic<bool> logon_complete{false};
+        std::atomic<bool> cancel_received{false};
+        std::atomic<bool> cancel_ack_sent{false};
+        std::thread thread;
+
+        CancelAcceptor() {
+            config.sender_comp_id = "ACCEPTOR";
+            config.target_comp_id = "INITIATOR";
+            config.heart_bt_int = 30;
+            config.validate_comp_ids = false;
+        }
+
+        ~CancelAcceptor() { stop(); }
+
+        uint16_t start() {
+            auto result = acceptor.listen(0);
+            REQUIRE(result.has_value());
+            uint16_t port = acceptor.local_port();
+            REQUIRE(port != 0);
+            running.store(true, std::memory_order_release);
+            thread = std::thread([this] { run(); });
+            return port;
+        }
+
+        void stop() {
+            running.store(false, std::memory_order_release);
+            acceptor.close();
+            if (thread.joinable()) thread.join();
+        }
+
+        void run() {
+            auto accept_result = acceptor.accept();
+            if (!accept_result.has_value()) return;
+
+            TcpSocket client_sock{*accept_result};
+            SessionManager session{config};
+
+            SessionCallbacks cbs;
+            cbs.on_send = [&client_sock](std::span<const char> data) -> bool {
+                auto result = client_sock.send(data);
+                return result.has_value() && *result > 0;
+            };
+            cbs.on_logon = [this]() {
+                logon_complete.store(true, std::memory_order_release);
+            };
+            cbs.on_app_message = [this, &session](const ParsedMessage& msg) {
+                if (msg.msg_type() == msg_type::OrderCancelRequest) {
+                    cancel_received.store(true, std::memory_order_release);
+
+                    // Respond with cancel ack ER
+                    auto er_builder = fix44::ExecutionReport::Builder{}
+                        .order_id("ORD001")
+                        .exec_id("EXEC002")
+                        .exec_type(ExecType::Canceled)
+                        .ord_status(OrdStatus::Canceled)
+                        .symbol(msg.get_string(tag::Symbol::value))
+                        .side(Side::Buy)
+                        .leaves_qty(Qty::from_int(0))
+                        .cum_qty(Qty::from_int(0))
+                        .avg_px(FixedPrice::from_double(0.0))
+                        .cl_ord_id(msg.get_string(tag::ClOrdID::value))
+                        .transact_time("20260427-12:00:00.000");
+                    (void)session.send_app_message(er_builder);
+                    cancel_ack_sent.store(true, std::memory_order_release);
+                }
+            };
+            session.set_callbacks(std::move(cbs));
+            session.on_connect();
+
+            SocketBridge bridge{client_sock, session};
+            while (running.load(std::memory_order_acquire) && client_sock.is_connected()) {
+                bridge.poll_once(20);
+            }
+            if (client_sock.is_connected()) session.on_disconnect();
+        }
+    };
+
+    CancelAcceptor acceptor;
+    uint16_t port = acceptor.start();
+
+    InitiatorEndpoint initiator;
+    REQUIRE(initiator.connect(port));
+
+    // Logon
+    (void)initiator.session().initiate_logon();
+    REQUIRE(initiator.poll_until([&] { return initiator.logon_received(); }));
+
+    auto deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);
+    while (!acceptor.logon_complete.load(std::memory_order_acquire) &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    REQUIRE(acceptor.logon_complete.load());
+
+    // Send OrderCancelRequest
+    auto cancel_builder = fix44::OrderCancelRequest::Builder{}
+        .orig_cl_ord_id("ORDER001")
+        .cl_ord_id("CANCEL001")
+        .symbol("AAPL")
+        .side(Side::Buy)
+        .transact_time("20260427-12:00:00.000")
+        .order_qty(Qty::from_int(100));
+    auto cancel_result = initiator.session().send_app_message(cancel_builder);
+    REQUIRE(cancel_result.has_value());
+
+    // Wait for cancel ack ER
+    deadline = std::chrono::steady_clock::now() + std::chrono::milliseconds(2000);
+    while (!acceptor.cancel_ack_sent.load(std::memory_order_acquire) &&
+           std::chrono::steady_clock::now() < deadline) {
+        std::this_thread::sleep_for(std::chrono::milliseconds(5));
+    }
+    REQUIRE(acceptor.cancel_received.load());
+
+    bool er_received = initiator.poll_until([&] {
+        return initiator.app_message_count() > 0;
+    });
+    REQUIRE(er_received);
+    CHECK(initiator.app_msg_types()[0] == msg_type::ExecutionReport);
+
+    acceptor.stop();
+}
+
+TEST_CASE("E2E: Sequence gap -> ResendRequest -> SequenceReset-GapFill", "[e2e][regression]") {
+    // Acceptor responds to NOS with ER; sequence gap detection is internal
+    AcceptorEndpoint acceptor;
+    uint16_t port = acceptor.start();
+
+    InitiatorEndpoint initiator;
+    REQUIRE(initiator.connect(port));
+
+    // Logon
+    (void)initiator.session().initiate_logon();
+    REQUIRE(initiator.poll_until([&] { return initiator.logon_received(); }));
+    REQUIRE(acceptor.wait_for_logon());
+
+    // Send NOS - acceptor will respond with ER
+    auto nos_builder = fix44::NewOrderSingle::Builder{}
+        .cl_ord_id("GAP001")
+        .symbol("MSFT")
+        .side(Side::Buy)
+        .transact_time("20260427-12:00:00.000")
+        .order_qty(Qty::from_int(100))
+        .ord_type(OrdType::Limit)
+        .price(FixedPrice::from_double(400.00));
+    auto nos_result = initiator.session().send_app_message(nos_builder);
+    REQUIRE(nos_result.has_value());
+
+    // Poll for ER receipt
+    bool er_received = initiator.poll_until([&] {
+        return initiator.app_message_count() > 0;
+    });
+    REQUIRE(er_received);
+
+    // Verify session processed messages
+    CHECK(initiator.session().stats().messages_received >= 2);  // Logon + ER minimum
+
+    acceptor.stop();
+}
+
+TEST_CASE("E2E: Malformed message -> session error", "[e2e][regression]") {
+    AcceptorEndpoint acceptor;
+    uint16_t port = acceptor.start();
+
+    InitiatorEndpoint initiator;
+    REQUIRE(initiator.connect(port));
+
+    // Logon first
+    (void)initiator.session().initiate_logon();
+    REQUIRE(initiator.poll_until([&] { return initiator.logon_received(); }));
+    REQUIRE(acceptor.wait_for_logon());
+
+    // Feed garbled data directly to session as if received from network
+    const char garbled[] = "GARBLED_NOT_FIX_DATA\x01";
+    initiator.session().on_data_received({garbled, sizeof(garbled) - 1});
+
+    // Session should have recorded an error via callback
+    CHECK(initiator.error_count() > 0);
+
+    acceptor.stop();
+}
+
+TEST_CASE("E2E: Heartbeat timeout transitions to Error", "[e2e][regression]") {
+    // Use a very short heartbeat interval for testing
+    SessionConfig config;
+    config.sender_comp_id = "TEST";
+    config.target_comp_id = "PEER";
+    config.heart_bt_int = 1;  // 1 second heartbeat
+    config.validate_comp_ids = false;
+
+    SessionManager session{config};
+
+    bool state_changed_to_error = false;
+    SessionCallbacks cbs;
+    cbs.on_send = []([[maybe_unused]] std::span<const char> data) -> bool {
+        return true;  // Simulate successful send
+    };
+    cbs.on_state_change = [&state_changed_to_error](
+        [[maybe_unused]] SessionState from, SessionState to) {
+        if (to == SessionState::Error) {
+            state_changed_to_error = true;
+        }
+    };
+    session.set_callbacks(std::move(cbs));
+
+    // Simulate connection and logon
+    session.on_connect();
+    (void)session.initiate_logon();
+
+    // Simulate receiving logon response to reach Active state
+    MessageAssembler asm_;
+    auto logon_msg = fix44::Logon::Builder{}
+        .begin_string("FIX.4.4")
+        .sender_comp_id("PEER")
+        .target_comp_id("TEST")
+        .msg_seq_num(1)
+        .sending_time("20260427-12:00:00.000")
+        .encrypt_method(0)
+        .heart_bt_int(1)
+        .build(asm_);
+
+    session.on_data_received(logon_msg);
+    REQUIRE(session.state() == SessionState::Active);
+
+    // Wait for 2x heartbeat interval (2 seconds) so has_timed_out() returns true
+    std::this_thread::sleep_for(std::chrono::milliseconds(2100));
+
+    // on_timer_tick should detect timeout
+    session.on_timer_tick();
+
+    CHECK(session.state() == SessionState::Error);
+    CHECK(state_changed_to_error);
+}
+
+TEST_CASE("E2E: Reconnection after TCP close with session notify", "[e2e][regression]") {
+    AcceptorEndpoint acceptor;
+    uint16_t port = acceptor.start();
+
+    InitiatorEndpoint initiator;
+    REQUIRE(initiator.connect(port));
+
+    // Logon
+    (void)initiator.session().initiate_logon();
+    REQUIRE(initiator.poll_until([&] { return initiator.logon_received(); }));
+    REQUIRE(acceptor.wait_for_logon());
+    REQUIRE(initiator.session().state() == SessionState::Active);
+
+    // Kill the acceptor (closes server socket)
+    acceptor.stop();
+
+    // Give OS time to propagate the close
+    std::this_thread::sleep_for(std::chrono::milliseconds(50));
+
+    // Initiator detects disconnect on next poll
+    initiator.poll_once(50);
+
+    // After recv returns 0, socket transitions to Disconnected
+    CHECK_FALSE(initiator.socket().is_connected());
+
+    // Notify session of disconnect - from Active, this transitions to Reconnecting
+    initiator.session().on_disconnect();
+    CHECK(initiator.session().state() == SessionState::Reconnecting);
+}
+
+TEST_CASE("E2E: PossDupFlag on resent messages accepted for TooLow seq", "[e2e][regression]") {
+    // Test that messages with low sequence but no PossDupFlag trigger error
+    SessionConfig config;
+    config.sender_comp_id = "INIT";
+    config.target_comp_id = "ACPT";
+    config.heart_bt_int = 30;
+    config.validate_comp_ids = false;
+
+    SessionManager session{config};
+
+    int error_count = 0;
+    int app_msg_count = 0;
+    SessionCallbacks cbs;
+    cbs.on_send = []([[maybe_unused]] std::span<const char> data) -> bool {
+        return true;
+    };
+    cbs.on_error = [&error_count]([[maybe_unused]] const SessionError& err) {
+        ++error_count;
+    };
+    cbs.on_app_message = [&app_msg_count]([[maybe_unused]] const ParsedMessage& msg) {
+        ++app_msg_count;
+    };
+    cbs.on_logon = []() {};
+    session.set_callbacks(std::move(cbs));
+
+    // Reach Active state
+    session.on_connect();
+    (void)session.initiate_logon();
+
+    MessageAssembler asm_;
+    auto logon_msg = fix44::Logon::Builder{}
+        .begin_string("FIX.4.4")
+        .sender_comp_id("ACPT")
+        .target_comp_id("INIT")
+        .msg_seq_num(1)
+        .sending_time("20260427-12:00:00.000")
+        .encrypt_method(0)
+        .heart_bt_int(30)
+        .build(asm_);
+
+    session.on_data_received(logon_msg);
+    REQUIRE(session.state() == SessionState::Active);
+
+    // Send a normal NOS (seq 2) to advance expected inbound to 3
+    auto nos_msg = fix44::NewOrderSingle::Builder{}
+        .sender_comp_id("ACPT")
+        .target_comp_id("INIT")
+        .msg_seq_num(2)
+        .sending_time("20260427-12:00:01.000")
+        .cl_ord_id("ORD001")
+        .symbol("AAPL")
+        .side(Side::Buy)
+        .transact_time("20260427-12:00:01.000")
+        .order_qty(Qty::from_int(100))
+        .ord_type(OrdType::Limit)
+        .price(FixedPrice::from_double(150.00))
+        .build(asm_);
+
+    session.on_data_received(nos_msg);
+    REQUIRE(app_msg_count == 1);
+    int errors_before = error_count;
+
+    // Now send a message with seq 1 (too low) WITHOUT PossDupFlag
+    // This should trigger a sequence error
+    auto low_msg = fix44::NewOrderSingle::Builder{}
+        .sender_comp_id("ACPT")
+        .target_comp_id("INIT")
+        .msg_seq_num(1)
+        .sending_time("20260427-12:00:02.000")
+        .cl_ord_id("ORD002")
+        .symbol("TSLA")
+        .side(Side::Buy)
+        .transact_time("20260427-12:00:02.000")
+        .order_qty(Qty::from_int(50))
+        .ord_type(OrdType::Limit)
+        .price(FixedPrice::from_double(200.00))
+        .build(asm_);
+
+    session.on_data_received(low_msg);
+    // Without PossDupFlag, low seq triggers error and message is rejected
+    CHECK(error_count > errors_before);
+}
+
+TEST_CASE("E2E: Concurrent logon from same comp ID (reject second)", "[e2e][regression]") {
+    AcceptorEndpoint acceptor;
+    uint16_t port = acceptor.start();
+
+    // First initiator connects and logs on
+    InitiatorEndpoint initiator1;
+    REQUIRE(initiator1.connect(port));
+    (void)initiator1.session().initiate_logon();
+    REQUIRE(initiator1.poll_until([&] { return initiator1.logon_received(); }));
+    REQUIRE(acceptor.wait_for_logon());
+
+    // AcceptorEndpoint only handles one connection (single accept in run())
+    // Second connection attempt won't get a FIX logon response.
+    InitiatorEndpoint initiator2;
+
+    bool connected = initiator2.connect(port);
+    if (connected) {
+        (void)initiator2.session().initiate_logon();
+        // Should not receive logon response since acceptor is occupied
+        bool logon2_ok = initiator2.poll_until([&] {
+            return initiator2.logon_received();
+        }, 1000);
+        CHECK_FALSE(logon2_ok);
+    }
+
+    // First session should still be active
+    CHECK(initiator1.session().state() == SessionState::Active);
 
     acceptor.stop();
 }

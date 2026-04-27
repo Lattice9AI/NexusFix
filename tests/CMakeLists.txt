@@ -26,6 +26,22 @@ add_executable(nexusfix_tests
     test_sbe_codecs.cpp
     test_construct_utils.cpp
     test_ranges_utils.cpp
+    test_memory_message_store.cpp
+    test_error_mapping.cpp
+    test_transport_factory.cpp
+    test_cpu_affinity.cpp
+    test_memory_lock.cpp
+    test_huge_page.cpp
+    test_tcp_transport.cpp
+    test_ring_buffer.cpp
+    test_icache_warmer.cpp
+    test_diagnostic.cpp
+    test_prefetch.cpp
+    test_logger.cpp
+    test_version_compat.cpp
+    test_fix44_builders.cpp
+    test_performance_gate.cpp
+    test_platform.cpp
 )
 
 target_link_libraries(nexusfix_tests PRIVATE

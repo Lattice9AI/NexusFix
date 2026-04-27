@@ -628,6 +628,275 @@ TEST_CASE("NewOrderSingleCodec edge cases", "[sbe][nos][edge][regression]") {
 }
 
 // ============================================================================
+// Phase 7B: SBE Composite Types (TICKET_479)
+// ============================================================================
+
+TEST_CASE("DecimalPrice roundtrip and null handling", "[sbe][composite][regression]") {
+    alignas(8) char buffer[256]{};
+
+    SECTION("Roundtrip preserves value") {
+        FixedPrice price;
+        price.raw = 15050000000LL;  // 150.50
+
+        DecimalPrice::encode(buffer, price);
+        FixedPrice decoded = DecimalPrice::decode(buffer);
+        REQUIRE(decoded.raw == 15050000000LL);
+    }
+
+    SECTION("Roundtrip negative price") {
+        FixedPrice price;
+        price.raw = -3700000000LL;  // -37.00
+
+        DecimalPrice::encode(buffer, price);
+        REQUIRE(DecimalPrice::decode(buffer).raw == -3700000000LL);
+    }
+
+    SECTION("is_null on null sentinel returns true") {
+        DecimalPrice::write_null(buffer);
+        REQUIRE(DecimalPrice::is_null(buffer));
+    }
+
+    SECTION("is_null on valid value returns false") {
+        FixedPrice price;
+        price.raw = 15050000000LL;
+
+        DecimalPrice::encode(buffer, price);
+        REQUIRE_FALSE(DecimalPrice::is_null(buffer));
+    }
+
+    SECTION("write_null then is_null returns true") {
+        // First write a valid value
+        FixedPrice price;
+        price.raw = 42;
+        DecimalPrice::encode(buffer, price);
+        REQUIRE_FALSE(DecimalPrice::is_null(buffer));
+
+        // Overwrite with null
+        DecimalPrice::write_null(buffer);
+        REQUIRE(DecimalPrice::is_null(buffer));
+    }
+
+    SECTION("Zero-initialized buffer is not null") {
+        std::memset(buffer, 0, sizeof(buffer));
+        // raw 0 != INT64_MIN
+        REQUIRE_FALSE(DecimalPrice::is_null(buffer));
+        REQUIRE(DecimalPrice::decode(buffer).raw == 0);
+    }
+}
+
+TEST_CASE("DecimalQty roundtrip and null handling", "[sbe][composite][regression]") {
+    alignas(8) char buffer[256]{};
+
+    SECTION("Roundtrip preserves value") {
+        Qty qty;
+        qty.raw = 1000000LL;  // 100.0000
+
+        DecimalQty::encode(buffer, qty);
+        REQUIRE(DecimalQty::decode(buffer).raw == 1000000LL);
+    }
+
+    SECTION("is_null on null sentinel returns true") {
+        DecimalQty::write_null(buffer);
+        REQUIRE(DecimalQty::is_null(buffer));
+    }
+
+    SECTION("is_null on valid value returns false") {
+        Qty qty;
+        qty.raw = 500000LL;
+
+        DecimalQty::encode(buffer, qty);
+        REQUIRE_FALSE(DecimalQty::is_null(buffer));
+    }
+
+    SECTION("write_null then is_null returns true") {
+        Qty qty;
+        qty.raw = 42;
+        DecimalQty::encode(buffer, qty);
+        REQUIRE_FALSE(DecimalQty::is_null(buffer));
+
+        DecimalQty::write_null(buffer);
+        REQUIRE(DecimalQty::is_null(buffer));
+    }
+
+    SECTION("Zero-initialized buffer is not null") {
+        std::memset(buffer, 0, sizeof(buffer));
+        REQUIRE_FALSE(DecimalQty::is_null(buffer));
+        REQUIRE(DecimalQty::decode(buffer).raw == 0);
+    }
+}
+
+TEST_CASE("SbeTimestamp roundtrip and null handling", "[sbe][composite][regression]") {
+    alignas(8) char buffer[256]{};
+
+    SECTION("Roundtrip preserves nanos") {
+        Timestamp ts{1234567890123456789LL};
+
+        SbeTimestamp::encode(buffer, ts);
+        REQUIRE(SbeTimestamp::decode(buffer).nanos == 1234567890123456789LL);
+    }
+
+    SECTION("Roundtrip zero timestamp") {
+        Timestamp ts{0};
+
+        SbeTimestamp::encode(buffer, ts);
+        REQUIRE(SbeTimestamp::decode(buffer).nanos == 0);
+    }
+
+    SECTION("is_null on null sentinel returns true") {
+        SbeTimestamp::write_null(buffer);
+        REQUIRE(SbeTimestamp::is_null(buffer));
+    }
+
+    SECTION("is_null on valid value returns false") {
+        Timestamp ts{1234567890123456789LL};
+
+        SbeTimestamp::encode(buffer, ts);
+        REQUIRE_FALSE(SbeTimestamp::is_null(buffer));
+    }
+
+    SECTION("write_null then is_null returns true") {
+        Timestamp ts{999};
+        SbeTimestamp::encode(buffer, ts);
+        REQUIRE_FALSE(SbeTimestamp::is_null(buffer));
+
+        SbeTimestamp::write_null(buffer);
+        REQUIRE(SbeTimestamp::is_null(buffer));
+    }
+
+    SECTION("Zero-initialized buffer is not null") {
+        std::memset(buffer, 0, sizeof(buffer));
+        REQUIRE_FALSE(SbeTimestamp::is_null(buffer));
+        REQUIRE(SbeTimestamp::decode(buffer).nanos == 0);
+    }
+}
+
+TEST_CASE("SbeSide encode/decode and null handling", "[sbe][composite][regression]") {
+    alignas(8) char buffer[256]{};
+
+    SECTION("Buy roundtrip") {
+        SbeSide::encode(buffer, Side::Buy);
+        REQUIRE(SbeSide::decode(buffer) == Side::Buy);
+    }
+
+    SECTION("Sell roundtrip") {
+        SbeSide::encode(buffer, Side::Sell);
+        REQUIRE(SbeSide::decode(buffer) == Side::Sell);
+    }
+
+    SECTION("is_null / write_null") {
+        SbeSide::encode(buffer, Side::Buy);
+        REQUIRE_FALSE(SbeSide::is_null(buffer));
+
+        SbeSide::write_null(buffer);
+        REQUIRE(SbeSide::is_null(buffer));
+    }
+
+    SECTION("Zero-initialized buffer is null") {
+        std::memset(buffer, 0, sizeof(buffer));
+        // null_value::CHAR == '\0', so zero buffer is null
+        REQUIRE(SbeSide::is_null(buffer));
+    }
+}
+
+TEST_CASE("SbeOrdType encode/decode and null handling", "[sbe][composite][regression]") {
+    alignas(8) char buffer[256]{};
+
+    SECTION("Limit roundtrip") {
+        SbeOrdType::encode(buffer, OrdType::Limit);
+        REQUIRE(SbeOrdType::decode(buffer) == OrdType::Limit);
+    }
+
+    SECTION("Market roundtrip") {
+        SbeOrdType::encode(buffer, OrdType::Market);
+        REQUIRE(SbeOrdType::decode(buffer) == OrdType::Market);
+    }
+
+    SECTION("is_null / write_null") {
+        SbeOrdType::encode(buffer, OrdType::Limit);
+        REQUIRE_FALSE(SbeOrdType::is_null(buffer));
+
+        SbeOrdType::write_null(buffer);
+        REQUIRE(SbeOrdType::is_null(buffer));
+    }
+}
+
+TEST_CASE("SbeExecType encode/decode and null handling", "[sbe][composite][regression]") {
+    alignas(8) char buffer[256]{};
+
+    SECTION("Fill roundtrip") {
+        SbeExecType::encode(buffer, ExecType::Fill);
+        REQUIRE(SbeExecType::decode(buffer) == ExecType::Fill);
+    }
+
+    SECTION("New roundtrip") {
+        SbeExecType::encode(buffer, ExecType::New);
+        REQUIRE(SbeExecType::decode(buffer) == ExecType::New);
+    }
+
+    SECTION("Trade roundtrip") {
+        SbeExecType::encode(buffer, ExecType::Trade);
+        REQUIRE(SbeExecType::decode(buffer) == ExecType::Trade);
+    }
+
+    SECTION("is_null / write_null") {
+        SbeExecType::encode(buffer, ExecType::Fill);
+        REQUIRE_FALSE(SbeExecType::is_null(buffer));
+
+        SbeExecType::write_null(buffer);
+        REQUIRE(SbeExecType::is_null(buffer));
+    }
+}
+
+TEST_CASE("SbeOrdStatus encode/decode and null handling", "[sbe][composite][regression]") {
+    alignas(8) char buffer[256]{};
+
+    SECTION("Filled roundtrip") {
+        SbeOrdStatus::encode(buffer, OrdStatus::Filled);
+        REQUIRE(SbeOrdStatus::decode(buffer) == OrdStatus::Filled);
+    }
+
+    SECTION("Canceled roundtrip") {
+        SbeOrdStatus::encode(buffer, OrdStatus::Canceled);
+        REQUIRE(SbeOrdStatus::decode(buffer) == OrdStatus::Canceled);
+    }
+
+    SECTION("is_null / write_null") {
+        SbeOrdStatus::encode(buffer, OrdStatus::Filled);
+        REQUIRE_FALSE(SbeOrdStatus::is_null(buffer));
+
+        SbeOrdStatus::write_null(buffer);
+        REQUIRE(SbeOrdStatus::is_null(buffer));
+    }
+}
+
+TEST_CASE("SbeTimeInForce encode/decode and null handling", "[sbe][composite][regression]") {
+    alignas(8) char buffer[256]{};
+
+    SECTION("Day roundtrip") {
+        SbeTimeInForce::encode(buffer, TimeInForce::Day);
+        REQUIRE(SbeTimeInForce::decode(buffer) == TimeInForce::Day);
+    }
+
+    SECTION("GoodTillCancel roundtrip") {
+        SbeTimeInForce::encode(buffer, TimeInForce::GoodTillCancel);
+        REQUIRE(SbeTimeInForce::decode(buffer) == TimeInForce::GoodTillCancel);
+    }
+
+    SECTION("FillOrKill roundtrip") {
+        SbeTimeInForce::encode(buffer, TimeInForce::FillOrKill);
+        REQUIRE(SbeTimeInForce::decode(buffer) == TimeInForce::FillOrKill);
+    }
+
+    SECTION("is_null / write_null") {
+        SbeTimeInForce::encode(buffer, TimeInForce::Day);
+        REQUIRE_FALSE(SbeTimeInForce::is_null(buffer));
+
+        SbeTimeInForce::write_null(buffer);
+        REQUIRE(SbeTimeInForce::is_null(buffer));
+    }
+}
+
+// ============================================================================
 // Codec-Level Truncation Tests (TICKET_471_3)
 // ============================================================================
 

@@ -1,8 +1,10 @@
 #include <catch2/catch_test_macros.hpp>
 #include <thread>
 #include <chrono>
+#include <string>
 
 #include "nexusfix/util/rdtsc_timestamp.hpp"
+#include "nexusfix/util/fast_timestamp.hpp"
 
 using namespace nfx::util;
 
@@ -207,4 +209,143 @@ TEST_CASE("RDTSC timestamp performance characteristics", "[rdtsc][benchmark][!be
         INFO("Average latency: " << avg_ns << " ns/call");
         CHECK(avg_ns < 100);  // Generous threshold for CI
     }
+}
+
+// ============================================================================
+// FastTimestamp Tests (util/fast_timestamp.hpp)
+// ============================================================================
+
+TEST_CASE("FastTimestamp format YYYYMMDD-HH:MM:SS.mmm", "[rdtsc][timestamp][regression]") {
+    nfx::util::FastTimestamp ts;
+    auto sv = ts.get();
+
+    SECTION("Correct length") {
+        REQUIRE(sv.size() == nfx::util::FastTimestamp::TIMESTAMP_LEN);
+    }
+
+    SECTION("Format separators") {
+        CHECK(sv[8] == '-');
+        CHECK(sv[11] == ':');
+        CHECK(sv[14] == ':');
+        CHECK(sv[17] == '.');
+    }
+
+    SECTION("All digit positions are numeric") {
+        auto is_digit = [](char c) { return c >= '0' && c <= '9'; };
+
+        // Year
+        for (int i = 0; i < 4; ++i) CHECK(is_digit(sv[static_cast<size_t>(i)]));
+        // Month
+        CHECK(is_digit(sv[4]));
+        CHECK(is_digit(sv[5]));
+        // Day
+        CHECK(is_digit(sv[6]));
+        CHECK(is_digit(sv[7]));
+        // Hour
+        CHECK(is_digit(sv[9]));
+        CHECK(is_digit(sv[10]));
+        // Minute
+        CHECK(is_digit(sv[12]));
+        CHECK(is_digit(sv[13]));
+        // Second
+        CHECK(is_digit(sv[15]));
+        CHECK(is_digit(sv[16]));
+        // Milliseconds
+        CHECK(is_digit(sv[18]));
+        CHECK(is_digit(sv[19]));
+        CHECK(is_digit(sv[20]));
+    }
+
+    SECTION("Reasonable field ranges") {
+        int year = (sv[0] - '0') * 1000 + (sv[1] - '0') * 100 + (sv[2] - '0') * 10 + (sv[3] - '0');
+        int month = (sv[4] - '0') * 10 + (sv[5] - '0');
+        int day = (sv[6] - '0') * 10 + (sv[7] - '0');
+        int hour = (sv[9] - '0') * 10 + (sv[10] - '0');
+        int minute = (sv[12] - '0') * 10 + (sv[13] - '0');
+        int second = (sv[15] - '0') * 10 + (sv[16] - '0');
+        int millis = (sv[18] - '0') * 100 + (sv[19] - '0') * 10 + (sv[20] - '0');
+
+        CHECK(year >= 2024);
+        CHECK(year <= 2100);
+        CHECK(month >= 1);
+        CHECK(month <= 12);
+        CHECK(day >= 1);
+        CHECK(day <= 31);
+        CHECK(hour >= 0);
+        CHECK(hour < 24);
+        CHECK(minute >= 0);
+        CHECK(minute < 60);
+        CHECK(second >= 0);
+        CHECK(second < 60);
+        CHECK(millis >= 0);
+        CHECK(millis < 1000);
+    }
+}
+
+TEST_CASE("FastTimestamp fast path: same second shares date prefix", "[rdtsc][timestamp][regression]") {
+    nfx::util::FastTimestamp ts;
+
+    // Two calls within same second should share date+time prefix
+    auto sv1 = ts.get();
+    std::string prefix1(sv1.substr(0, 17));  // "YYYYMMDD-HH:MM:SS"
+
+    auto sv2 = ts.get();
+    std::string prefix2(sv2.substr(0, 17));
+
+    CHECK(prefix1 == prefix2);
+}
+
+TEST_CASE("FastTimestamp slow path: second boundary update", "[rdtsc][timestamp][regression]") {
+    using namespace std::chrono;
+    nfx::util::FastTimestamp ts;
+
+    // Use get(time_point) to force specific times
+    auto base = system_clock::now();
+    auto sec1 = floor<seconds>(base);
+    auto sec2 = sec1 + seconds{1};
+
+    auto sv1 = ts.get(sec1 + milliseconds{500});
+    std::string s1(sv1);
+
+    auto sv2 = ts.get(sec2 + milliseconds{100});
+    std::string s2(sv2);
+
+    // Second field (positions 15-16) should differ
+    CHECK(s1.substr(0, 17) != s2.substr(0, 17));
+}
+
+TEST_CASE("FastTimestamp monotonicity: sequential calls non-decreasing", "[rdtsc][timestamp][regression]") {
+    nfx::util::FastTimestamp ts;
+
+    std::string prev(ts.get());
+    int violations = 0;
+
+    for (int i = 0; i < 10'000; ++i) {
+        std::string curr(ts.get());
+        if (curr < prev) {
+            ++violations;
+        }
+        prev = curr;
+    }
+
+    CHECK(violations == 0);
+}
+
+TEST_CASE("FastTimestamp thread-local: independent instances", "[rdtsc][timestamp][regression]") {
+    // Main thread timestamp
+    auto sv_main = nfx::util::fast_timestamp();
+    std::string ts_main(sv_main);
+
+    std::string ts_thread;
+    std::thread t([&ts_thread]() {
+        auto sv = nfx::util::fast_timestamp();
+        ts_thread = std::string(sv);
+    });
+    t.join();
+
+    // Both should be valid timestamps
+    CHECK(ts_main.size() == 21);
+    CHECK(ts_thread.size() == 21);
+    CHECK(ts_main[8] == '-');
+    CHECK(ts_thread[8] == '-');
 }

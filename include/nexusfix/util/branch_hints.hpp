@@ -134,6 +134,11 @@ namespace nfx::util {
 // Loop Optimization Hints
 // ============================================================================
 
+// Helper macros for _Pragma with token pasting (GCC _Pragma rejects adjacent
+// string literals, so stringify the entire pragma directive as one token).
+#define NFX_PRAGMA_STRINGIFY_(x) #x
+#define NFX_PRAGMA_(x) _Pragma(NFX_PRAGMA_STRINGIFY_(x))
+
 /// Hint that loop will iterate many times
 #if defined(__clang__)
     #define NFX_LOOP_VECTORIZE _Pragma("clang loop vectorize(enable)")
@@ -156,7 +161,7 @@ namespace nfx::util {
 #if defined(__clang__)
     #define NFX_LOOP_UNROLL(n) _Pragma("clang loop unroll_count(" #n ")")
 #elif defined(__GNUC__) && __GNUC__ >= 8
-    #define NFX_LOOP_UNROLL(n) _Pragma("GCC unroll " #n)
+    #define NFX_LOOP_UNROLL(n) NFX_PRAGMA_(GCC unroll n)
 #else
     #define NFX_LOOP_UNROLL(n)
 #endif

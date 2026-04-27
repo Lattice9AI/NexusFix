@@ -300,3 +300,159 @@ TEST_CASE("MDReqRejReason - Name conversion", "[market_data][types][regression]"
     REQUIRE(md_rej_reason_name(MDReqRejReason::DuplicateMDReqID) == "DuplicateMDReqID");
     REQUIRE(md_rej_reason_name(MDReqRejReason::UnsupportedMarketDepth) == "UnsupportedMarketDepth");
 }
+
+// ============================================================================
+// Phase 7A: Market Data Type Metadata (TICKET_479)
+// ============================================================================
+
+TEST_CASE("MDEntryType - All name conversions", "[market_data][types][metadata][regression]") {
+    REQUIRE(md_entry_type_name(MDEntryType::Bid) == "Bid");
+    REQUIRE(md_entry_type_name(MDEntryType::Offer) == "Offer");
+    REQUIRE(md_entry_type_name(MDEntryType::Trade) == "Trade");
+    REQUIRE(md_entry_type_name(MDEntryType::IndexValue) == "IndexValue");
+    REQUIRE(md_entry_type_name(MDEntryType::OpeningPrice) == "OpeningPrice");
+    REQUIRE(md_entry_type_name(MDEntryType::ClosingPrice) == "ClosingPrice");
+    REQUIRE(md_entry_type_name(MDEntryType::SettlementPrice) == "SettlementPrice");
+    REQUIRE(md_entry_type_name(MDEntryType::TradingSessionHighPrice) == "SessionHigh");
+    REQUIRE(md_entry_type_name(MDEntryType::TradingSessionLowPrice) == "SessionLow");
+    REQUIRE(md_entry_type_name(MDEntryType::TradingSessionVWAPPrice) == "VWAP");
+    REQUIRE(md_entry_type_name(MDEntryType::Imbalance) == "Imbalance");
+    REQUIRE(md_entry_type_name(MDEntryType::TradeVolume) == "TradeVolume");
+    REQUIRE(md_entry_type_name(MDEntryType::OpenInterest) == "OpenInterest");
+}
+
+TEST_CASE("MDEntryType - Invalid value returns Unknown", "[market_data][types][metadata][regression]") {
+    REQUIRE(md_entry_type_name(static_cast<MDEntryType>('Z')) == "Unknown");
+    REQUIRE(md_entry_type_name(static_cast<MDEntryType>('\0')) == "Unknown");
+    REQUIRE(md_entry_type_name(static_cast<MDEntryType>('D')) == "Unknown");
+}
+
+TEST_CASE("MDEntryType - Consteval template lookup", "[market_data][types][metadata][regression]") {
+    static_assert(md_entry_type_name<MDEntryType::Bid>() == "Bid");
+    static_assert(md_entry_type_name<MDEntryType::Offer>() == "Offer");
+    static_assert(md_entry_type_name<MDEntryType::Trade>() == "Trade");
+    static_assert(md_entry_type_name<MDEntryType::TradeVolume>() == "TradeVolume");
+    static_assert(md_entry_type_name<MDEntryType::OpenInterest>() == "OpenInterest");
+    REQUIRE(md_entry_type_name<MDEntryType::Bid>() == "Bid");
+}
+
+TEST_CASE("is_quote_type - Exhaustive", "[market_data][types][metadata][regression]") {
+    REQUIRE(is_quote_type(MDEntryType::Bid));
+    REQUIRE(is_quote_type(MDEntryType::Offer));
+    REQUIRE_FALSE(is_quote_type(MDEntryType::Trade));
+    REQUIRE_FALSE(is_quote_type(MDEntryType::IndexValue));
+    REQUIRE_FALSE(is_quote_type(MDEntryType::TradeVolume));
+    REQUIRE_FALSE(is_quote_type(MDEntryType::OpenInterest));
+}
+
+TEST_CASE("is_trade_type - Exhaustive", "[market_data][types][metadata][regression]") {
+    REQUIRE(is_trade_type(MDEntryType::Trade));
+    REQUIRE(is_trade_type(MDEntryType::TradeVolume));
+    REQUIRE_FALSE(is_trade_type(MDEntryType::Bid));
+    REQUIRE_FALSE(is_trade_type(MDEntryType::Offer));
+    REQUIRE_FALSE(is_trade_type(MDEntryType::IndexValue));
+    REQUIRE_FALSE(is_trade_type(MDEntryType::OpenInterest));
+}
+
+TEST_CASE("MDUpdateAction - All name conversions", "[market_data][types][metadata][regression]") {
+    REQUIRE(md_update_action_name(MDUpdateAction::New) == "New");
+    REQUIRE(md_update_action_name(MDUpdateAction::Change) == "Change");
+    REQUIRE(md_update_action_name(MDUpdateAction::Delete) == "Delete");
+    REQUIRE(md_update_action_name(MDUpdateAction::DeleteThru) == "DeleteThru");
+    REQUIRE(md_update_action_name(MDUpdateAction::DeleteFrom) == "DeleteFrom");
+}
+
+TEST_CASE("MDUpdateAction - Invalid value returns Unknown", "[market_data][types][metadata][regression]") {
+    REQUIRE(md_update_action_name(static_cast<MDUpdateAction>('9')) == "Unknown");
+    REQUIRE(md_update_action_name(static_cast<MDUpdateAction>('A')) == "Unknown");
+}
+
+TEST_CASE("MDUpdateAction - Consteval template lookup", "[market_data][types][metadata][regression]") {
+    static_assert(md_update_action_name<MDUpdateAction::New>() == "New");
+    static_assert(md_update_action_name<MDUpdateAction::Delete>() == "Delete");
+    static_assert(md_update_action_name<MDUpdateAction::DeleteFrom>() == "DeleteFrom");
+    REQUIRE(md_update_action_name<MDUpdateAction::Change>() == "Change");
+}
+
+TEST_CASE("SubscriptionRequestType - Invalid value returns Unknown", "[market_data][types][metadata][regression]") {
+    REQUIRE(subscription_type_name(static_cast<SubscriptionRequestType>('9')) == "Unknown");
+    REQUIRE(subscription_type_name(static_cast<SubscriptionRequestType>('A')) == "Unknown");
+}
+
+TEST_CASE("SubscriptionRequestType - Consteval template lookup", "[market_data][types][metadata][regression]") {
+    static_assert(subscription_type_name<SubscriptionRequestType::Snapshot>() == "Snapshot");
+    static_assert(subscription_type_name<SubscriptionRequestType::SnapshotPlusUpdates>() == "Subscribe");
+    static_assert(subscription_type_name<SubscriptionRequestType::DisablePreviousSnapshot>() == "Unsubscribe");
+    REQUIRE(subscription_type_name<SubscriptionRequestType::Snapshot>() == "Snapshot");
+}
+
+TEST_CASE("MDReqRejReason - All name conversions", "[market_data][types][metadata][regression]") {
+    REQUIRE(md_rej_reason_name(MDReqRejReason::UnknownSymbol) == "UnknownSymbol");
+    REQUIRE(md_rej_reason_name(MDReqRejReason::DuplicateMDReqID) == "DuplicateMDReqID");
+    REQUIRE(md_rej_reason_name(MDReqRejReason::InsufficientPermissions) == "InsufficientPermissions");
+    REQUIRE(md_rej_reason_name(MDReqRejReason::UnsupportedSubscriptionType) == "UnsupportedSubscriptionType");
+    REQUIRE(md_rej_reason_name(MDReqRejReason::UnsupportedMarketDepth) == "UnsupportedMarketDepth");
+    REQUIRE(md_rej_reason_name(MDReqRejReason::UnsupportedMDUpdateType) == "UnsupportedMDUpdateType");
+    REQUIRE(md_rej_reason_name(MDReqRejReason::UnsupportedAggregatedBook) == "UnsupportedAggregatedBook");
+    REQUIRE(md_rej_reason_name(MDReqRejReason::UnsupportedMDEntryType) == "UnsupportedMDEntryType");
+    REQUIRE(md_rej_reason_name(MDReqRejReason::UnsupportedTradingSessionID) == "UnsupportedTradingSessionID");
+    REQUIRE(md_rej_reason_name(MDReqRejReason::UnsupportedScope) == "UnsupportedScope");
+    REQUIRE(md_rej_reason_name(MDReqRejReason::UnsupportedOpenCloseSettleFlag) == "UnsupportedOpenCloseSettleFlag");
+    REQUIRE(md_rej_reason_name(MDReqRejReason::UnsupportedMDImplicitDelete) == "UnsupportedMDImplicitDelete");
+    REQUIRE(md_rej_reason_name(MDReqRejReason::InsufficientCredit) == "InsufficientCredit");
+    REQUIRE(md_rej_reason_name(MDReqRejReason::Other) == "Other");
+}
+
+TEST_CASE("MDReqRejReason - Invalid value returns Unknown", "[market_data][types][metadata][regression]") {
+    REQUIRE(md_rej_reason_name(static_cast<MDReqRejReason>('E')) == "Unknown");
+    REQUIRE(md_rej_reason_name(static_cast<MDReqRejReason>('Z')) == "Unknown");
+    REQUIRE(md_rej_reason_name(static_cast<MDReqRejReason>('\0')) == "Unknown");
+}
+
+TEST_CASE("MDReqRejReason - Consteval template lookup", "[market_data][types][metadata][regression]") {
+    static_assert(md_rej_reason_name<MDReqRejReason::UnknownSymbol>() == "UnknownSymbol");
+    static_assert(md_rej_reason_name<MDReqRejReason::Other>() == "Other");
+    static_assert(md_rej_reason_name<MDReqRejReason::InsufficientCredit>() == "InsufficientCredit");
+    REQUIRE(md_rej_reason_name<MDReqRejReason::UnknownSymbol>() == "UnknownSymbol");
+}
+
+TEST_CASE("MDEntry - Convenience predicates", "[market_data][types][metadata][regression]") {
+    SECTION("is_bid / is_offer / is_trade") {
+        MDEntry bid{.entry_type = MDEntryType::Bid};
+        REQUIRE(bid.is_bid());
+        REQUIRE_FALSE(bid.is_offer());
+        REQUIRE_FALSE(bid.is_trade());
+
+        MDEntry offer{.entry_type = MDEntryType::Offer};
+        REQUIRE_FALSE(offer.is_bid());
+        REQUIRE(offer.is_offer());
+        REQUIRE_FALSE(offer.is_trade());
+
+        MDEntry trade{.entry_type = MDEntryType::Trade};
+        REQUIRE_FALSE(trade.is_bid());
+        REQUIRE_FALSE(trade.is_offer());
+        REQUIRE(trade.is_trade());
+    }
+
+    SECTION("has_price with zero and non-zero") {
+        MDEntry no_price{.price_raw = 0};
+        REQUIRE_FALSE(no_price.has_price());
+
+        MDEntry with_price{.price_raw = 15025};
+        REQUIRE(with_price.has_price());
+
+        MDEntry negative_price{.price_raw = -100};
+        REQUIRE(negative_price.has_price());
+    }
+
+    SECTION("has_size with zero and non-zero") {
+        MDEntry no_size{.size_raw = 0};
+        REQUIRE_FALSE(no_size.has_size());
+
+        MDEntry with_size{.size_raw = 1000};
+        REQUIRE(with_size.has_size());
+
+        MDEntry negative_size{.size_raw = -1};
+        REQUIRE(negative_size.has_size());
+    }
+}
