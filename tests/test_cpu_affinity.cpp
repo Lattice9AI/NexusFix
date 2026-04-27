@@ -47,7 +47,7 @@ TEST_CASE("get_affinity returns non-empty on Linux", "[cpu_affinity][regression]
 TEST_CASE("pin_to_core(0) succeeds on Linux", "[cpu_affinity][regression]") {
     auto original = CpuAffinity::get_affinity();
 
-    auto result = CpuAffinity::pin_to_core(0);
+    [[maybe_unused]] auto result = CpuAffinity::pin_to_core(0);
 #ifdef __linux__
     // Should succeed (no special privileges needed for affinity)
     REQUIRE(result.success);
