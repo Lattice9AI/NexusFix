@@ -314,3 +314,170 @@ TEST_CASE("MessageFactory complete messages", "[serializer][regression]") {
         REQUIRE(sv.find("58=") == std::string_view::npos);
     }
 }
+
+// ============================================================================
+// FastMessageBuilder Overflow / Truncation Tests (TICKET_471_1)
+// ============================================================================
+
+TEST_CASE("FastMessageBuilder overflow sets truncated flag", "[serializer][truncation][regression]") {
+    SECTION("default constructed is not truncated") {
+        FastMessageBuilder<64> builder;
+        REQUIRE_FALSE(builder.truncated());
+    }
+
+    SECTION("normal usage does not truncate") {
+        FastMessageBuilder<512> builder;
+        builder.field<35>('A');
+        builder.field<49>(std::string_view{"SENDER"});
+        REQUIRE_FALSE(builder.truncated());
+    }
+
+    SECTION("write_raw truncation sets flag") {
+        // Use a tiny buffer. "35=D\x01" = 5 bytes.
+        FastMessageBuilder<4> builder;
+        builder.field<35>(std::string_view{"D"});
+        // "35=" is 3 bytes, "D" is 1 byte (fits exactly 4), SOH overflows
+        REQUIRE(builder.truncated());
+    }
+
+    SECTION("write_soh truncation sets flag") {
+        // "8=" is 2 bytes, "X" is 1 byte = 3 bytes, then SOH needs byte 4
+        FastMessageBuilder<3> builder;
+        builder.field<8>(std::string_view{"X"});
+        // write_raw("8=", 2) ok, write_raw("X", 1) ok, write_soh() overflows
+        REQUIRE(builder.truncated());
+        REQUIRE(builder.size() == 3);
+    }
+
+    SECTION("char field overflow sets flag") {
+        // "35=" is 3 bytes, char 'A' needs 1, SOH needs 1 = 5 total
+        FastMessageBuilder<4> builder;
+        builder.field<35>('A');
+        REQUIRE(builder.truncated());
+    }
+
+    SECTION("exactly at MaxSize does not truncate") {
+        // "8=X\x01" = 4 bytes exactly
+        FastMessageBuilder<4> builder;
+        builder.field<8>(std::string_view{"X"});
+        REQUIRE(builder.size() == 4);
+        REQUIRE_FALSE(builder.truncated());
+    }
+
+    SECTION("one byte over MaxSize sets truncation") {
+        // "8=XY\x01" = 5 bytes, buffer is 4
+        FastMessageBuilder<4> builder;
+        builder.field<8>(std::string_view{"XY"});
+        REQUIRE(builder.truncated());
+        REQUIRE(builder.size() == 4);
+    }
+
+    SECTION("size is capped at MaxSize") {
+        FastMessageBuilder<8> builder;
+        // Write far more than 8 bytes
+        std::string big(100, 'Z');
+        builder.field<8>(big);
+        REQUIRE(builder.size() <= 8);
+        REQUIRE(builder.truncated());
+    }
+
+    SECTION("reset clears truncated flag") {
+        FastMessageBuilder<4> builder;
+        builder.field<8>(std::string_view{"XY"});
+        REQUIRE(builder.truncated());
+
+        builder.reset();
+        REQUIRE_FALSE(builder.truncated());
+        REQUIRE(builder.size() == 0);
+    }
+
+    SECTION("truncated flag persists across subsequent writes") {
+        FastMessageBuilder<4> builder;
+        builder.field<8>(std::string_view{"XY"});
+        REQUIRE(builder.truncated());
+
+        // Another write still truncated (buffer full)
+        builder.field<9>(std::string_view{"1"});
+        REQUIRE(builder.truncated());
+    }
+
+    SECTION("recovery after reset") {
+        FastMessageBuilder<64> builder;
+
+        // First: trigger truncation with tiny effective usage
+        // Reuse same builder but with MaxSize=64, fill it up
+        std::string big(100, 'A');
+        builder.field<58>(big);
+        REQUIRE(builder.truncated());
+
+        // Reset and build a normal message
+        builder.reset();
+        REQUIRE_FALSE(builder.truncated());
+        builder.field<35>('0');
+        REQUIRE_FALSE(builder.truncated());
+    }
+}
+
+TEST_CASE("FastMessageBuilder finalize_checksum bounds safety", "[serializer][truncation][regression]") {
+    SECTION("finalize_checksum on nearly full buffer sets truncated") {
+        // finalize_checksum writes "10=" (3 bytes) + 3 digit chars + SOH = 7 bytes
+        // Fill buffer so there is not enough room for checksum
+        FastMessageBuilder<16> builder;
+        // "8=ABCDEFGHIJK\x01" = 2 + 11 + 1 = 14 bytes, leaving 2 for checksum (need 7)
+        builder.field<8>(std::string_view{"ABCDEFGHIJK"});
+        REQUIRE_FALSE(builder.truncated());
+        REQUIRE(builder.size() == 14);
+
+        builder.finalize_checksum();
+        REQUIRE(builder.truncated());
+        // Size should be capped at MaxSize
+        REQUIRE(builder.size() <= 16);
+    }
+
+    SECTION("finalize_checksum with enough room does not truncate") {
+        FastMessageBuilder<512> builder;
+        builder.field<35>('0');
+        REQUIRE_FALSE(builder.truncated());
+
+        builder.finalize_checksum();
+        REQUIRE_FALSE(builder.truncated());
+    }
+}
+
+TEST_CASE("FastMessageBuilder update_body_length bounds safety", "[serializer][truncation][regression]") {
+    SECTION("update_body_length skips write when placeholder was truncated") {
+        // Buffer of 8 bytes. "9=" (2) + "000000" (6) + SOH (1) = 9 bytes needed.
+        // body_length_placeholder will truncate the placeholder.
+        FastMessageBuilder<8> builder;
+        size_t bl_pos = builder.body_length_placeholder();
+        REQUIRE(builder.truncated());
+
+        // Capture buffer content before update
+        auto before = builder.view();
+        std::string snap_before(before.data(), before.size());
+
+        // update_body_length must not write out of bounds
+        // bl_pos points into a partially written region; pos+6 > MaxSize
+        builder.update_body_length(bl_pos, 42);
+
+        // If bl_pos + 6 > MaxSize, the write is skipped entirely
+        if (bl_pos + 6 > 8) {
+            auto after = builder.view();
+            std::string snap_after(after.data(), after.size());
+            REQUIRE(snap_before == snap_after);
+        }
+    }
+
+    SECTION("update_body_length works when placeholder fits") {
+        FastMessageBuilder<512> builder;
+        builder.begin_string(std::string_view{"FIX.4.4"});
+        size_t bl_pos = builder.body_length_placeholder();
+        REQUIRE_FALSE(builder.truncated());
+
+        builder.update_body_length(bl_pos, 123);
+        auto sv = builder.view();
+        std::string msg(sv.data(), sv.size());
+        // Should contain "000123" at the placeholder position
+        REQUIRE(msg.find("000123") != std::string::npos);
+    }
+}

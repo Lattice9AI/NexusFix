@@ -168,7 +168,7 @@ struct FieldDescriptor {
 template<size_t MaxSize = 4096>
 class FastMessageBuilder {
 public:
-    constexpr FastMessageBuilder() noexcept : buffer_{}, pos_{0} {}
+    constexpr FastMessageBuilder() noexcept : buffer_{}, pos_{0}, truncated_{false} {}
 
     /// Write a field with string value
     template<int Tag>
@@ -202,7 +202,11 @@ public:
     FastMessageBuilder& field(char value) noexcept {
         constexpr TagString<Tag> tag_str{};
         write_raw(tag_str.c_str(), tag_str.size());
-        if (pos_ < MaxSize) buffer_[pos_++] = value;
+        if (pos_ < MaxSize) {
+            buffer_[pos_++] = value;
+        } else {
+            truncated_ = true;
+        }
         write_soh();
         return *this;
     }
@@ -231,6 +235,7 @@ public:
 
     /// Update BodyLength at given position
     void update_body_length(size_t pos, size_t length) noexcept {
+        if (pos + 6 > MaxSize) return;
         FastIntSerializer<6>::serialize_fixed(&buffer_[pos], static_cast<uint32_t>(length));
     }
 
@@ -276,9 +281,12 @@ public:
         // Write 10=XXX|
         constexpr TagString<10> tag_str{};
         write_raw(tag_str.c_str(), tag_str.size());
-        buffer_[pos_++] = '0' + (checksum / 100);
-        buffer_[pos_++] = '0' + ((checksum / 10) % 10);
-        buffer_[pos_++] = '0' + (checksum % 10);
+        char cs_buf[3] = {
+            static_cast<char>('0' + (checksum / 100)),
+            static_cast<char>('0' + ((checksum / 10) % 10)),
+            static_cast<char>('0' + (checksum % 10))
+        };
+        write_raw(cs_buf, 3);
         write_soh();
     }
 
@@ -299,7 +307,10 @@ public:
     [[nodiscard]] const char* c_str() const noexcept { return buffer_.data(); }
 
     /// Reset builder
-    void reset() noexcept { pos_ = 0; }
+    void reset() noexcept { pos_ = 0; truncated_ = false; }
+
+    /// Check if any data was truncated due to buffer overflow
+    [[nodiscard]] bool truncated() const noexcept { return truncated_; }
 
     /// Get body start position (after tag 9)
     [[nodiscard]] size_t body_start() const noexcept { return body_start_; }
@@ -310,17 +321,23 @@ public:
 private:
     void write_raw(const char* data, size_t len) noexcept {
         size_t to_write = (pos_ + len <= MaxSize) ? len : (MaxSize - pos_);
+        if (to_write < len) truncated_ = true;
         std::memcpy(&buffer_[pos_], data, to_write);
         pos_ += to_write;
     }
 
     void write_soh() noexcept {
-        if (pos_ < MaxSize) buffer_[pos_++] = SOH;
+        if (pos_ < MaxSize) {
+            buffer_[pos_++] = SOH;
+        } else {
+            truncated_ = true;
+        }
     }
 
     std::array<char, MaxSize> buffer_;
     size_t pos_;
     size_t body_start_{0};
+    bool truncated_{false};
 };
 
 // ============================================================================
