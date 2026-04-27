@@ -60,7 +60,7 @@ endif()
 
 include(CTest)
 include(Catch)
-catch_discover_tests(nexusfix_tests SKIP_RETURN_CODE 4)
+catch_discover_tests(nexusfix_tests PROPERTIES SKIP_RETURN_CODE 4)
 
 # QuickFIX compatibility tests (standalone)
 # TODO: Fix API mismatches in quickfix_compat.cpp (TICKET-011)
@@ -102,5 +102,5 @@ if(NFX_ENABLE_MIMALLOC)
     set_target_properties(mimalloc_tests PROPERTIES
         RUNTIME_OUTPUT_DIRECTORY ${CMAKE_BINARY_DIR}/bin/tests
     )
-    catch_discover_tests(mimalloc_tests SKIP_RETURN_CODE 4)
+    catch_discover_tests(mimalloc_tests PROPERTIES SKIP_RETURN_CODE 4)
 endif()
