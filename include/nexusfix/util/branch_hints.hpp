@@ -122,13 +122,22 @@ namespace nfx::util {
 // ============================================================================
 
 /// Prefetch for read with high locality
-#define NFX_PREFETCH_READ(addr) __builtin_prefetch((addr), 0, 3)
-
 /// Prefetch for read with low locality (streaming)
-#define NFX_PREFETCH_READ_NTA(addr) __builtin_prefetch((addr), 0, 0)
-
 /// Prefetch for write
-#define NFX_PREFETCH_WRITE(addr) __builtin_prefetch((addr), 1, 3)
+#if defined(__GNUC__) || defined(__clang__)
+    #define NFX_PREFETCH_READ(addr) __builtin_prefetch((addr), 0, 3)
+    #define NFX_PREFETCH_READ_NTA(addr) __builtin_prefetch((addr), 0, 0)
+    #define NFX_PREFETCH_WRITE(addr) __builtin_prefetch((addr), 1, 3)
+#elif defined(_MSC_VER)
+    #include <xmmintrin.h>
+    #define NFX_PREFETCH_READ(addr) _mm_prefetch(reinterpret_cast<const char*>(addr), _MM_HINT_T0)
+    #define NFX_PREFETCH_READ_NTA(addr) _mm_prefetch(reinterpret_cast<const char*>(addr), _MM_HINT_NTA)
+    #define NFX_PREFETCH_WRITE(addr) _mm_prefetch(reinterpret_cast<const char*>(addr), _MM_HINT_T0)
+#else
+    #define NFX_PREFETCH_READ(addr) ((void)(addr))
+    #define NFX_PREFETCH_READ_NTA(addr) ((void)(addr))
+    #define NFX_PREFETCH_WRITE(addr) ((void)(addr))
+#endif
 
 // ============================================================================
 // Loop Optimization Hints

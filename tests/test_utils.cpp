@@ -679,8 +679,15 @@ TEST_CASE("NFX_CHECK_NULL, NFX_CHECK_ERROR, NFX_CHECK_SUCCESS macros",
 
 TEST_CASE("NFX_ASSERT compiles and passes on true condition",
           "[branch_hints][regression]") {
+#if defined(_MSC_VER)
+    #pragma warning(push)
+    #pragma warning(disable : 4127)  // conditional expression is constant
+#endif
     NFX_ASSERT(true);
     NFX_ASSERT(1 + 1 == 2);
+#if defined(_MSC_VER)
+    #pragma warning(pop)
+#endif
 
     int x = 42;
     NFX_ASSERT(x == 42);
