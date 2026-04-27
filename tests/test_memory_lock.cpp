@@ -6,6 +6,27 @@
 #include <cstring>
 #include <vector>
 
+#ifdef _MSC_VER
+    #include <malloc.h>
+#endif
+
+namespace {
+inline void* portable_aligned_alloc(size_t alignment, size_t size) {
+#ifdef _MSC_VER
+    return _aligned_malloc(size, alignment);
+#else
+    return std::aligned_alloc(alignment, size);
+#endif
+}
+inline void portable_aligned_free(void* ptr) {
+#ifdef _MSC_VER
+    _aligned_free(ptr);
+#else
+    std::free(ptr);
+#endif
+}
+} // namespace
+
 using namespace nfx::util;
 
 // ============================================================================
@@ -53,7 +74,7 @@ TEST_CASE("get_memlock_limit returns a value", "[memory_lock][regression]") {
 TEST_CASE("lock_memory on small buffer", "[memory_lock][regression]") {
     // Allocate a page-aligned buffer
     constexpr std::size_t buf_size = 4096;
-    void* buf = std::aligned_alloc(4096, buf_size);
+    void* buf = portable_aligned_alloc(4096, buf_size);
     REQUIRE(buf != nullptr);
     std::memset(buf, 0, buf_size);
 
@@ -70,7 +91,7 @@ TEST_CASE("lock_memory on small buffer", "[memory_lock][regression]") {
                  err.code == MemoryLockErrorCode::SystemError));
     }
 
-    std::free(buf);
+    portable_aligned_free(buf);
 }
 
 // ============================================================================
@@ -117,26 +138,26 @@ TEST_CASE("prefault_memory with zero length is safe", "[memory_lock][regression]
 TEST_CASE("advise_memory with Sequential advice", "[memory_lock][regression]") {
     // madvise requires page-aligned address
     constexpr std::size_t buf_size = 4096 * 4;
-    void* buf = std::aligned_alloc(4096, buf_size);
+    void* buf = portable_aligned_alloc(4096, buf_size);
     REQUIRE(buf != nullptr);
     std::memset(buf, 0, buf_size);
 
     auto result = advise_memory(buf, buf_size, MemoryAdvice::Sequential);
     REQUIRE(result.has_value());
 
-    std::free(buf);
+    portable_aligned_free(buf);
 }
 
 TEST_CASE("advise_memory with Random advice", "[memory_lock][regression]") {
     constexpr std::size_t buf_size = 4096 * 4;
-    void* buf = std::aligned_alloc(4096, buf_size);
+    void* buf = portable_aligned_alloc(4096, buf_size);
     REQUIRE(buf != nullptr);
     std::memset(buf, 0, buf_size);
 
     auto result = advise_memory(buf, buf_size, MemoryAdvice::Random);
     REQUIRE(result.has_value());
 
-    std::free(buf);
+    portable_aligned_free(buf);
 }
 #endif
 
@@ -160,7 +181,7 @@ TEST_CASE("ScopedMemoryLock RAII construction and destruction", "[memory_lock][r
 
 TEST_CASE("ScopedRangeLock RAII locks and unlocks range", "[memory_lock][regression]") {
     constexpr std::size_t buf_size = 4096;
-    void* buf = std::aligned_alloc(4096, buf_size);
+    void* buf = portable_aligned_alloc(4096, buf_size);
     REQUIRE(buf != nullptr);
     std::memset(buf, 0, buf_size);
 
@@ -171,5 +192,5 @@ TEST_CASE("ScopedRangeLock RAII locks and unlocks range", "[memory_lock][regress
     }
     // Destructor unlocks - no crash = pass
 
-    std::free(buf);
+    portable_aligned_free(buf);
 }

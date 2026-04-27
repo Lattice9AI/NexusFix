@@ -83,8 +83,15 @@ TEST_CASE("NFX_SCOPED_TRACE compiles as no-op when disabled", "[diagnostic][regr
 // ============================================================================
 
 TEST_CASE("NFX_INVARIANT passes on true condition", "[diagnostic][regression]") {
+#if defined(_MSC_VER)
+    #pragma warning(push)
+    #pragma warning(disable : 4127)  // conditional expression is constant
+#endif
     NFX_INVARIANT(1 == 1, "basic truth");
     NFX_INVARIANT(true, "boolean true");
+#if defined(_MSC_VER)
+    #pragma warning(pop)
+#endif
     CHECK(true);
 }
 

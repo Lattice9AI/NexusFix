@@ -14,8 +14,13 @@
 
 #include <cstddef>
 #include <cstdint>
+#include <cstdlib>
 #include <memory>
 #include <new>
+
+#ifdef _MSC_VER
+    #include <malloc.h>
+#endif
 
 #ifdef __linux__
 #include <sys/mman.h>
@@ -77,6 +82,7 @@ public:
         return allocate_fallback(size, static_cast<size_t>(HugePageSize::Standard));
 #else
         // Non-Linux: use standard aligned allocation
+        (void)page_size;
         return allocate_fallback(size, 4096);
 #endif
     }
@@ -90,7 +96,13 @@ public:
         size_t aligned_size = align_to_page(size, static_cast<size_t>(page_size));
         munmap(ptr, aligned_size);
 #else
+        (void)size;
+        (void)page_size;
+    #ifdef _MSC_VER
+        _aligned_free(ptr);
+    #else
         std::free(ptr);
+    #endif
 #endif
     }
 
@@ -129,7 +141,11 @@ private:
     }
 
     [[nodiscard]] static void* allocate_fallback(size_t size, size_t alignment) noexcept {
+#ifdef _MSC_VER
+        return _aligned_malloc(align_to_page(size, alignment), alignment);
+#else
         return std::aligned_alloc(alignment, align_to_page(size, alignment));
+#endif
     }
 };
 
