@@ -16,6 +16,10 @@
 #include <cstdint>
 #include <utility>
 
+#if defined(_MSC_VER)
+#include <intrin.h>
+#endif
+
 namespace nfx::util {
 
 // ============================================================================
@@ -50,32 +54,57 @@ enum class PrefetchLocality {
 /// Prefetch for read with high locality (L1 cache)
 /// Use this for data that will be read multiple times
 inline void prefetch_read(const void* ptr) noexcept {
+#if defined(_MSC_VER)
+    _mm_prefetch(static_cast<const char*>(ptr), _MM_HINT_T0);
+#else
     __builtin_prefetch(ptr, 0, 3);  // read=0, locality=3 (L1)
+#endif
 }
 
 /// Prefetch for read with low locality (minimize cache pollution)
 /// Use for streaming data that won't be reused
 inline void prefetch_read_nta(const void* ptr) noexcept {
+#if defined(_MSC_VER)
+    _mm_prefetch(static_cast<const char*>(ptr), _MM_HINT_NTA);
+#else
     __builtin_prefetch(ptr, 0, 0);  // read=0, locality=0 (NTA)
+#endif
 }
 
 /// Prefetch for write with high locality (L1 cache)
 /// Use when you know you'll write to this address soon
 inline void prefetch_write(void* ptr) noexcept {
+#if defined(_MSC_VER)
+    _mm_prefetch(static_cast<const char*>(ptr), _MM_HINT_T0);
+#else
     __builtin_prefetch(ptr, 1, 3);  // write=1, locality=3 (L1)
+#endif
 }
 
 /// Prefetch for write with low locality
 inline void prefetch_write_nta(void* ptr) noexcept {
+#if defined(_MSC_VER)
+    _mm_prefetch(static_cast<const char*>(ptr), _MM_HINT_NTA);
+#else
     __builtin_prefetch(ptr, 1, 0);  // write=1, locality=0 (NTA)
+#endif
 }
 
 /// Prefetch with configurable locality
 template<PrefetchLocality Locality = PrefetchLocality::High, bool ForWrite = false>
 inline void prefetch(const void* ptr) noexcept {
+#if defined(_MSC_VER)
+    // MSVC _mm_prefetch locality mapping: NTA=0, T2=1, T1=2, T0=3
+    constexpr int hint = (Locality == PrefetchLocality::None) ? _MM_HINT_NTA :
+                         (Locality == PrefetchLocality::Low) ? _MM_HINT_T2 :
+                         (Locality == PrefetchLocality::Medium) ? _MM_HINT_T1 :
+                         _MM_HINT_T0;
+    _mm_prefetch(static_cast<const char*>(ptr), hint);
+#else
     constexpr int rw = ForWrite ? 1 : 0;
     constexpr int locality = static_cast<int>(Locality);
     __builtin_prefetch(ptr, rw, locality);
+#endif
 }
 
 // ============================================================================
@@ -131,7 +160,9 @@ inline void prefetch_elements_ahead(const T* ptr) noexcept {
 
 /// Memory fence to ensure prefetches are issued
 inline void prefetch_fence() noexcept {
-#if defined(__x86_64__) || defined(_M_X64)
+#if defined(_MSC_VER)
+    _ReadWriteBarrier();
+#elif defined(__x86_64__)
     asm volatile("" ::: "memory");
 #else
     __sync_synchronize();
