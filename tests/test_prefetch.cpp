@@ -37,7 +37,7 @@ TEST_CASE("prefetch with configurable locality does not crash", "[prefetch][regr
     prefetch<PrefetchLocality::Low>(buffer);
     prefetch<PrefetchLocality::Medium>(buffer);
     prefetch<PrefetchLocality::High>(buffer);
-    prefetch<PrefetchLocality::High>(buffer, true);  // for_write
+    prefetch<PrefetchLocality::High, true>(buffer);  // for_write
     CHECK(true);
 }
 

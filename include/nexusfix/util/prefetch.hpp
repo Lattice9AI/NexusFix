@@ -71,9 +71,11 @@ inline void prefetch_write_nta(void* ptr) noexcept {
 }
 
 /// Prefetch with configurable locality
-template<PrefetchLocality Locality = PrefetchLocality::High>
-inline void prefetch(const void* ptr, bool for_write = false) noexcept {
-    __builtin_prefetch(ptr, for_write ? 1 : 0, std::to_underlying(Locality));
+template<PrefetchLocality Locality = PrefetchLocality::High, bool ForWrite = false>
+inline void prefetch(const void* ptr) noexcept {
+    constexpr int rw = ForWrite ? 1 : 0;
+    constexpr int locality = static_cast<int>(Locality);
+    __builtin_prefetch(ptr, rw, locality);
 }
 
 // ============================================================================

@@ -9,7 +9,9 @@
 #include "nexusfix/parser/simd_scanner.hpp"
 #include "nexusfix/parser/simd_checksum.hpp"
 
+#if defined(NFX_HAS_MIMALLOC) && NFX_HAS_MIMALLOC
 #include <mimalloc.h>
+#endif
 
 using namespace nfx;
 
@@ -50,6 +52,7 @@ constexpr size_t BENCH_ITERATIONS  = 10000;
 // CI/VM environments are slower, so we use a generous gate.
 constexpr double P99_THRESHOLD_NS = 5000.0;
 
+#if defined(NFX_HAS_MIMALLOC) && NFX_HAS_MIMALLOC
 /// Count live blocks on a mimalloc heap via mi_heap_visit_blocks.
 struct HeapBlockCount {
     size_t count{0};
@@ -64,6 +67,7 @@ bool count_blocks_visitor(
     }
     return true; // continue visiting
 }
+#endif // NFX_HAS_MIMALLOC
 
 } // namespace
 
@@ -110,6 +114,7 @@ TEST_CASE("Parser P99 latency gate", "[performance][regression]") {
 // 6A-2: Zero heap allocations on hot path (instrumented allocator counting)
 // ============================================================================
 
+#if defined(NFX_HAS_MIMALLOC) && NFX_HAS_MIMALLOC
 TEST_CASE("Zero heap allocations on hot path", "[performance][regression]") {
     std::span<const char> data{EXEC_REPORT.data(), EXEC_REPORT.size()};
 
@@ -145,6 +150,7 @@ TEST_CASE("Zero heap allocations on hot path", "[performance][regression]") {
 
     mi_heap_delete(test_heap);
 }
+#endif // NFX_HAS_MIMALLOC
 
 // ============================================================================
 // 6A-3: SIMD vs scalar produce identical parse results
