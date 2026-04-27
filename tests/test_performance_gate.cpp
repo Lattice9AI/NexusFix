@@ -76,6 +76,9 @@ bool count_blocks_visitor(
 // ============================================================================
 
 TEST_CASE("Parser P99 latency gate", "[performance][regression]") {
+#if !defined(NDEBUG)
+    SKIP("P99 latency gate only meaningful in Release builds");
+#endif
     using clock = std::chrono::steady_clock;
 
     std::span<const char> data{EXEC_REPORT.data(), EXEC_REPORT.size()};
