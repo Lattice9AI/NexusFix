@@ -34,6 +34,8 @@ namespace old_impl {
         case nfx::ParseErrorCode::InvalidMsgType:     return "Invalid MsgType";
         case nfx::ParseErrorCode::GarbledMessage:     return "Garbled message";
         case nfx::ParseErrorCode::OverflowExhausted: return "Field table overflow exhausted";
+        case nfx::ParseErrorCode::BodyLengthMismatch: return "BodyLength mismatch";
+        case nfx::ParseErrorCode::FieldCountExceeded: return "Field count exceeded maximum";
     }
     return "Unknown error";
 }
@@ -115,7 +117,7 @@ inline void do_not_optimize(T&& value) {
 // Test data
 // ============================================================================
 
-constexpr std::array<nfx::ParseErrorCode, 12> ALL_PARSE_ERRORS = {
+constexpr std::array<nfx::ParseErrorCode, 15> ALL_PARSE_ERRORS = {
     nfx::ParseErrorCode::None,
     nfx::ParseErrorCode::BufferTooShort,
     nfx::ParseErrorCode::InvalidBeginString,
@@ -127,7 +129,10 @@ constexpr std::array<nfx::ParseErrorCode, 12> ALL_PARSE_ERRORS = {
     nfx::ParseErrorCode::DuplicateTag,
     nfx::ParseErrorCode::UnterminatedField,
     nfx::ParseErrorCode::InvalidMsgType,
-    nfx::ParseErrorCode::GarbledMessage
+    nfx::ParseErrorCode::GarbledMessage,
+    nfx::ParseErrorCode::OverflowExhausted,
+    nfx::ParseErrorCode::BodyLengthMismatch,
+    nfx::ParseErrorCode::FieldCountExceeded
 };
 
 constexpr std::array<nfx::SessionErrorCode, 9> ALL_SESSION_ERRORS = {
@@ -193,7 +198,7 @@ int main() {
     // Benchmark 1: ParseError message()
     // ========================================================================
 
-    std::cout << "--- ParseError (12 codes, " << ITERATIONS << " iterations) ---\n\n";
+    std::cout << "--- ParseError (15 codes, " << ITERATIONS << " iterations) ---\n\n";
 
     // Warmup
     for (int i = 0; i < WARMUP; ++i) {
@@ -390,7 +395,7 @@ int main() {
     std::cout << "|------------------|--------------|--------------|-------------|\n";
     std::cout << "| Average          |              |              | " << avg_improvement << "% |\n";
 
-    std::cout << "\nTotal switch cases eliminated: 50 (12 + 9 + 20 + 9)\n";
+    std::cout << "\nTotal switch cases eliminated: 53 (15 + 9 + 20 + 9)\n";
 
     return 0;
 }
