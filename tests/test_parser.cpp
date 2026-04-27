@@ -787,6 +787,90 @@ TEST_CASE("PaddedMessageBuffer", "[parser][simd][structural][regression]") {
 }
 
 // ============================================================================
+// PaddedMessageBuffer Overflow / Truncation Tests (TICKET_471_2)
+// ============================================================================
+
+TEST_CASE("PaddedMessageBuffer overflow sets truncated flag", "[parser][simd][structural][regression]") {
+    SECTION("default constructed is not truncated") {
+        simd::SmallPaddedBuffer buffer;  // MaxSize=256
+        REQUIRE_FALSE(buffer.truncated());
+    }
+
+    SECTION("set() with fitting data is not truncated") {
+        simd::SmallPaddedBuffer buffer;
+        std::string data(256, 'A');
+        buffer.set(std::span<const char>{data.data(), data.size()});
+        REQUIRE(buffer.size() == 256);
+        REQUIRE_FALSE(buffer.truncated());
+    }
+
+    SECTION("set() with oversized data sets truncated") {
+        simd::SmallPaddedBuffer buffer;
+        std::string data(257, 'A');
+        buffer.set(std::span<const char>{data.data(), data.size()});
+        REQUIRE(buffer.size() == 256);
+        REQUIRE(buffer.truncated());
+    }
+
+    SECTION("set() clears truncated when called with fitting data") {
+        simd::SmallPaddedBuffer buffer;
+
+        // First: trigger truncation
+        std::string big(300, 'A');
+        buffer.set(std::span<const char>{big.data(), big.size()});
+        REQUIRE(buffer.truncated());
+
+        // Second: fitting data clears the flag
+        std::string small(100, 'B');
+        buffer.set(std::span<const char>{small.data(), small.size()});
+        REQUIRE_FALSE(buffer.truncated());
+        REQUIRE(buffer.size() == 100);
+    }
+
+    SECTION("set_size() with fitting size is not truncated") {
+        simd::SmallPaddedBuffer buffer;
+        buffer.set_size(256);
+        REQUIRE_FALSE(buffer.truncated());
+    }
+
+    SECTION("set_size() with oversized value sets truncated") {
+        simd::SmallPaddedBuffer buffer;
+        buffer.set_size(257);
+        REQUIRE(buffer.size() == 256);
+        REQUIRE(buffer.truncated());
+    }
+
+    SECTION("set_size() clears truncated when called with fitting value") {
+        simd::SmallPaddedBuffer buffer;
+
+        // Trigger truncation
+        buffer.set_size(300);
+        REQUIRE(buffer.truncated());
+
+        // Fitting value clears
+        buffer.set_size(128);
+        REQUIRE_FALSE(buffer.truncated());
+        REQUIRE(buffer.size() == 128);
+    }
+
+    SECTION("boundary: exactly MaxSize is not truncated") {
+        simd::MediumPaddedBuffer buffer;  // MaxSize=1024
+        std::string data(1024, 'X');
+        buffer.set(std::span<const char>{data.data(), data.size()});
+        REQUIRE(buffer.size() == 1024);
+        REQUIRE_FALSE(buffer.truncated());
+    }
+
+    SECTION("boundary: MaxSize+1 is truncated") {
+        simd::MediumPaddedBuffer buffer;
+        std::string data(1025, 'X');
+        buffer.set(std::span<const char>{data.data(), data.size()});
+        REQUIRE(buffer.size() == 1024);
+        REQUIRE(buffer.truncated());
+    }
+}
+
+// ============================================================================
 // SIMD Checksum Tests
 // ============================================================================
 

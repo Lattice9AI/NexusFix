@@ -65,13 +65,14 @@ public:
     static constexpr size_t CAPACITY = MaxSize;
     static constexpr size_t TOTAL_SIZE = MaxSize + SIMD_PADDING;
 
-    constexpr PaddedMessageBuffer() noexcept : size_{0} {
+    constexpr PaddedMessageBuffer() noexcept : size_{0}, truncated_{false} {
         // Zero-initialize padding region
         std::memset(buffer_.data() + MaxSize, 0, SIMD_PADDING);
     }
 
     /// Set buffer contents (copies data, zeros padding)
     void set(std::span<const char> msg) noexcept {
+        truncated_ = msg.size() > MaxSize;
         size_ = std::min(msg.size(), MaxSize);
         std::memcpy(buffer_.data(), msg.data(), size_);
         // Zero remaining padding to prevent stale data
@@ -97,6 +98,7 @@ public:
 
     /// Set size after external write
     void set_size(size_t n) noexcept {
+        truncated_ = n > MaxSize;
         size_ = std::min(n, MaxSize);
     }
 
@@ -104,9 +106,13 @@ public:
     [[nodiscard]] size_t capacity() const noexcept { return MaxSize; }
     [[nodiscard]] bool empty() const noexcept { return size_ == 0; }
 
+    /// Check if buffer was truncated due to overflow
+    [[nodiscard]] bool truncated() const noexcept { return truncated_; }
+
 private:
     alignas(CACHE_LINE_SIZE) std::array<char, TOTAL_SIZE> buffer_{};
     size_t size_;
+    bool truncated_;
 };
 
 // Common padded buffer sizes
