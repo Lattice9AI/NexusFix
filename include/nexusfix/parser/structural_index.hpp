@@ -313,8 +313,9 @@ inline FIXStructuralIndex build_index_xsimd(std::span<const char> data) noexcept
     const auto* ptr = reinterpret_cast<const uint8_t*>(data.data());
 
     // Process chunks
-    for (size_t i = 0; i < simd_end && idx.soh_count < MAX_FIELDS - width; i += width) {
-        auto chunk = xsimd::load_unaligned<Arch>(ptr + i);
+    size_t simd_pos = 0;
+    for (; simd_pos < simd_end && idx.soh_count < MAX_FIELDS - width; simd_pos += width) {
+        auto chunk = xsimd::load_unaligned<Arch>(ptr + simd_pos);
 
         // Detect SOH positions
         uint64_t soh_mask = (chunk == soh_vec).mask();
@@ -323,15 +324,15 @@ inline FIXStructuralIndex build_index_xsimd(std::span<const char> data) noexcept
         uint64_t eq_mask = (chunk == eq_vec).mask();
 
         // Extract positions from masks
-        extract_positions(soh_mask, i, idx.soh_positions.data(),
+        extract_positions(soh_mask, simd_pos, idx.soh_positions.data(),
                           idx.soh_count, MAX_FIELDS);
-        extract_positions(eq_mask, i, idx.equals_positions.data(),
+        extract_positions(eq_mask, simd_pos, idx.equals_positions.data(),
                           idx.equals_count, MAX_FIELDS);
     }
 
-    // Handle remaining bytes with scalar code
+    // Handle remaining bytes with scalar code (resume from where SIMD stopped)
     const char* cptr = data.data();
-    for (size_t i = simd_end; i < data.size() && idx.soh_count < MAX_FIELDS; ++i) {
+    for (size_t i = simd_pos; i < data.size() && idx.soh_count < MAX_FIELDS; ++i) {
         if (cptr[i] == fix::EQUALS) [[unlikely]] {
             idx.equals_positions[idx.equals_count++] = static_cast<uint16_t>(i);
         }
@@ -438,9 +439,10 @@ inline FIXStructuralIndex build_index_avx2(std::span<const char> data) noexcept 
     const char* __restrict ptr = data.data();
 
     // Process 32-byte chunks
-    for (size_t i = 0; i < simd_end && idx.soh_count < MAX_FIELDS - 32; i += 32) {
+    size_t simd_pos = 0;
+    for (; simd_pos < simd_end && idx.soh_count < MAX_FIELDS - 32; simd_pos += 32) {
         __m256i chunk = _mm256_loadu_si256(
-            reinterpret_cast<const __m256i*>(ptr + i));
+            reinterpret_cast<const __m256i*>(ptr + simd_pos));
 
         // Detect SOH positions
         __m256i soh_cmp = _mm256_cmpeq_epi8(chunk, soh_vec);
@@ -451,14 +453,14 @@ inline FIXStructuralIndex build_index_avx2(std::span<const char> data) noexcept 
         uint32_t eq_mask = static_cast<uint32_t>(_mm256_movemask_epi8(eq_cmp));
 
         // Extract positions from masks
-        extract_positions_avx2(soh_mask, i, idx.soh_positions.data(),
+        extract_positions_avx2(soh_mask, simd_pos, idx.soh_positions.data(),
                                idx.soh_count, MAX_FIELDS);
-        extract_positions_avx2(eq_mask, i, idx.equals_positions.data(),
+        extract_positions_avx2(eq_mask, simd_pos, idx.equals_positions.data(),
                                idx.equals_count, MAX_FIELDS);
     }
 
-    // Handle remaining bytes with scalar code
-    for (size_t i = simd_end; i < data.size() && idx.soh_count < MAX_FIELDS; ++i) {
+    // Handle remaining bytes with scalar code (resume from where SIMD stopped)
+    for (size_t i = simd_pos; i < data.size() && idx.soh_count < MAX_FIELDS; ++i) {
         if (ptr[i] == fix::EQUALS) [[unlikely]] {
             idx.equals_positions[idx.equals_count++] = static_cast<uint16_t>(i);
         }
@@ -545,9 +547,10 @@ inline FIXStructuralIndex build_index_avx512(std::span<const char> data) noexcep
     const char* __restrict ptr = data.data();
 
     // Process 64-byte chunks
-    for (size_t i = 0; i < simd_end && idx.soh_count < MAX_FIELDS - 64; i += 64) {
+    size_t simd_pos = 0;
+    for (; simd_pos < simd_end && idx.soh_count < MAX_FIELDS - 64; simd_pos += 64) {
         __m512i chunk = _mm512_loadu_si512(
-            reinterpret_cast<const __m512i*>(ptr + i));
+            reinterpret_cast<const __m512i*>(ptr + simd_pos));
 
         // Detect SOH positions (returns 64-bit mask directly)
         __mmask64 soh_mask = _mm512_cmpeq_epi8_mask(chunk, soh_vec);
@@ -556,14 +559,14 @@ inline FIXStructuralIndex build_index_avx512(std::span<const char> data) noexcep
         __mmask64 eq_mask = _mm512_cmpeq_epi8_mask(chunk, eq_vec);
 
         // Extract positions from masks
-        extract_positions_avx512(soh_mask, i, idx.soh_positions.data(),
+        extract_positions_avx512(soh_mask, simd_pos, idx.soh_positions.data(),
                                  idx.soh_count, MAX_FIELDS);
-        extract_positions_avx512(eq_mask, i, idx.equals_positions.data(),
+        extract_positions_avx512(eq_mask, simd_pos, idx.equals_positions.data(),
                                  idx.equals_count, MAX_FIELDS);
     }
 
-    // Handle remaining bytes with scalar code
-    for (size_t i = simd_end; i < data.size() && idx.soh_count < MAX_FIELDS; ++i) {
+    // Handle remaining bytes with scalar code (resume from where SIMD stopped)
+    for (size_t i = simd_pos; i < data.size() && idx.soh_count < MAX_FIELDS; ++i) {
         if (ptr[i] == fix::EQUALS) [[unlikely]] {
             idx.equals_positions[idx.equals_count++] = static_cast<uint16_t>(i);
         }

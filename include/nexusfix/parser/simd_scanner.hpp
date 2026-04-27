@@ -171,20 +171,21 @@ inline SohPositions scan_soh_xsimd(std::span<const char> data) noexcept {
     const size_t simd_end = data.size() & ~(width - 1);
     const auto* ptr = reinterpret_cast<const uint8_t*>(data.data());
 
-    for (size_t i = 0; i < simd_end && result.count < MAX_SOH_POSITIONS - width; i += width) {
-        auto chunk = xsimd::load_unaligned<Arch>(ptr + i);
+    size_t simd_pos = 0;
+    for (; simd_pos < simd_end && result.count < MAX_SOH_POSITIONS - width; simd_pos += width) {
+        auto chunk = xsimd::load_unaligned<Arch>(ptr + simd_pos);
         auto cmp = (chunk == soh_vec);
         uint64_t mask = cmp.mask();
 
         while (mask != 0) [[likely]] {
             int bit = std::countr_zero(mask);
-            result.push(static_cast<uint16_t>(i + bit));
+            result.push(static_cast<uint16_t>(simd_pos + bit));
             mask &= mask - 1;
         }
     }
 
-    // Scalar tail
-    for (size_t i = simd_end; i < data.size() && result.count < MAX_SOH_POSITIONS; ++i) {
+    // Scalar tail: resume from where SIMD loop stopped (not simd_end)
+    for (size_t i = simd_pos; i < data.size() && result.count < MAX_SOH_POSITIONS; ++i) {
         if (data[i] == fix::SOH) [[unlikely]] {
             result.push(static_cast<uint16_t>(i));
         }
@@ -394,10 +395,11 @@ inline SohPositions scan_soh_avx2(std::span<const char> data) noexcept {
     const char* __restrict ptr = data.data();
 
     // Process 32-byte chunks with AVX2
-    for (size_t i = 0; i < simd_end && result.count < MAX_SOH_POSITIONS - 32; i += AVX2_REGISTER_SIZE) {
+    size_t simd_pos = 0;
+    for (; simd_pos < simd_end && result.count < MAX_SOH_POSITIONS - 32; simd_pos += AVX2_REGISTER_SIZE) {
         // Load 32 bytes (unaligned load is fine on modern CPUs)
         __m256i chunk = _mm256_loadu_si256(
-            reinterpret_cast<const __m256i*>(ptr + i));
+            reinterpret_cast<const __m256i*>(ptr + simd_pos));
 
         // Compare with SOH
         __m256i cmp = _mm256_cmpeq_epi8(chunk, soh_vec);
@@ -408,13 +410,13 @@ inline SohPositions scan_soh_avx2(std::span<const char> data) noexcept {
         // Extract positions from bitmask (branch-free loop with early exit)
         while (mask != 0) [[likely]] {
             int bit = __builtin_ctz(mask);  // Find lowest set bit
-            result.push(static_cast<uint16_t>(i + bit));
+            result.push(static_cast<uint16_t>(simd_pos + bit));
             mask &= mask - 1;  // Clear lowest set bit (branch-free)
         }
     }
 
-    // Handle remaining bytes with scalar code
-    for (size_t i = simd_end; i < data.size() && result.count < MAX_SOH_POSITIONS; ++i) {
+    // Handle remaining bytes with scalar code (resume from where SIMD stopped)
+    for (size_t i = simd_pos; i < data.size() && result.count < MAX_SOH_POSITIONS; ++i) {
         if (ptr[i] == fix::SOH) [[unlikely]] {
             result.push(static_cast<uint16_t>(i));
         }
@@ -552,10 +554,11 @@ inline SohPositions scan_soh_avx512(std::span<const char> data) noexcept {
     const char* __restrict ptr = data.data();
 
     // Process 64-byte chunks with AVX-512
-    for (size_t i = 0; i < simd_end && result.count < MAX_SOH_POSITIONS - 64; i += AVX512_REGISTER_SIZE) {
+    size_t simd_pos = 0;
+    for (; simd_pos < simd_end && result.count < MAX_SOH_POSITIONS - 64; simd_pos += AVX512_REGISTER_SIZE) {
         // Load 64 bytes (unaligned load)
         __m512i chunk = _mm512_loadu_si512(
-            reinterpret_cast<const __m512i*>(ptr + i));
+            reinterpret_cast<const __m512i*>(ptr + simd_pos));
 
         // Compare with SOH - returns 64-bit mask directly (more efficient than AVX2)
         __mmask64 mask = _mm512_cmpeq_epi8_mask(chunk, soh_vec);
@@ -563,13 +566,13 @@ inline SohPositions scan_soh_avx512(std::span<const char> data) noexcept {
         // Extract positions from 64-bit bitmask
         while (mask != 0) [[likely]] {
             int bit = _tzcnt_u64(mask);  // Find lowest set bit (64-bit)
-            result.push(static_cast<uint16_t>(i + bit));
+            result.push(static_cast<uint16_t>(simd_pos + bit));
             mask &= mask - 1;  // Clear lowest set bit
         }
     }
 
-    // Handle remaining bytes with scalar code
-    for (size_t i = simd_end; i < data.size() && result.count < MAX_SOH_POSITIONS; ++i) {
+    // Handle remaining bytes with scalar code (resume from where SIMD stopped)
+    for (size_t i = simd_pos; i < data.size() && result.count < MAX_SOH_POSITIONS; ++i) {
         if (ptr[i] == fix::SOH) [[unlikely]] {
             result.push(static_cast<uint16_t>(i));
         }
