@@ -159,7 +159,7 @@ namespace nfx::util {
 
 /// Unroll loop N times
 #if defined(__clang__)
-    #define NFX_LOOP_UNROLL(n) _Pragma("clang loop unroll_count(" #n ")")
+    #define NFX_LOOP_UNROLL(n) NFX_PRAGMA_(clang loop unroll_count(n))
 #elif defined(__GNUC__) && __GNUC__ >= 8
     #define NFX_LOOP_UNROLL(n) NFX_PRAGMA_(GCC unroll n)
 #else
