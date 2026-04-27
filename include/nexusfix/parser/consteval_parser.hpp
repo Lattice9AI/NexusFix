@@ -51,7 +51,7 @@ struct MessageSchema {
     static consteval int tag_index() {
         int index = 0;
         int result = -1;
-        ((Fields::tag == Tag ? (result = index, true) : (++index, false)) || ...);
+        (void)((Fields::tag == Tag ? (result = index, true) : (++index, false)) || ...);
         return result;
     }
 
@@ -59,7 +59,7 @@ struct MessageSchema {
     template <int Tag>
     static consteval bool is_required() {
         bool result = false;
-        ((Fields::tag == Tag && Fields::is_required ? (result = true) : false) || ...);
+        (void)((Fields::tag == Tag && Fields::is_required ? (result = true) : false) || ...);
         return result;
     }
 
