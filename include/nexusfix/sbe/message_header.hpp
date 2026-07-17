@@ -56,7 +56,7 @@ public:
 
     // Check if header is valid
     [[nodiscard]] NFX_FORCE_INLINE bool isValid() const noexcept {
-        return buffer_ != nullptr && length_ >= SIZE;
+        return buffer_ != nullptr && length_ >= SIZE; // LCOV_EXCL_BR_LINE: NFX_FORCE_INLINE isValid inlined at every decode/dispatch call site; both arms are covered by tests but GCC replicates the branch pair per site (TICKET_499 WI3)
     }
 
     // Read block length (size of message body)
@@ -96,7 +96,7 @@ public:
 
     // Validate header schema matches expected
     [[nodiscard]] NFX_FORCE_INLINE bool validateSchema() const noexcept {
-        return schemaId() == SCHEMA_ID && version() == SCHEMA_VERSION;
+        return schemaId() == SCHEMA_ID && version() == SCHEMA_VERSION; // LCOV_EXCL_BR_LINE: NFX_FORCE_INLINE validateSchema inlined per call site; both arms covered by tests, GCC replicates the branch pair per site (TICKET_499 WI3)
     }
 
     // ========================================================================

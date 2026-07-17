@@ -36,38 +36,65 @@ import re, sys, collections
 
 info = sys.argv[1]
 
-# Per-module branch-coverage floors (achieved-minus-2, measured 2026-07-17).
-# Achieved snapshot for reference: engine 73.5, memory 69.6, messages 74.6,
-# parser 83.1, platform 91.5, sbe 53.2, serializer 92.3, session 86.2,
-# store 76.8, transport 73.6, types 75.3, util 71.1; overall 73.0.
-# Raised from 2026-07-16 baseline by TICKET_497_3 WS1-WS5 branch coverage work.
+# Per-module branch-coverage floors (achieved-minus-2, re-anchored 2026-07-17
+# after TICKET_499 WI3). Floors are computed over source-level branches only:
+# LCOV_EXCL_BR_LINE markers are honored by this gate (see load_excl below), which
+# removes the GCC template-inlining artifact branches lcov itself cannot exclude
+# (SBE codec isValid chains, FixedString encode memcpy/memset dispatch, dispatch
+# switch). Achieved snapshot for reference: engine 73.5, memory 72.4,
+# messages 82.2, parser 85.0, platform 91.5, sbe 75.0, serializer 92.3,
+# session 86.2, store 76.8, transport 73.6, types 87.2, util 70.8; overall 81.2.
+# Raised from the 73.0 TICKET_497_3 baseline by the TICKET_499 WI3 test batches.
 FLOORS = {
     "engine":     71.0,
-    "memory":     67.0,
-    "messages":   72.0,
-    "parser":     81.0,
+    "memory":     70.0,
+    "messages":   80.0,
+    "parser":     83.0,
     "platform":   89.0,
-    "sbe":        51.0,
+    "sbe":        73.0,
     "serializer": 90.0,
     "session":    84.0,
     "store":      74.0,
     "transport":  71.0,
-    "types":      73.0,
-    "util":       69.0,
+    "types":      85.0,
+    "util":       68.0,
 }
-OVERALL_FLOOR = 71.0
+OVERALL_FLOOR = 79.0
 
 mods = collections.defaultdict(lambda: [0, 0])  # module -> [hit, total]
 overall = [0, 0]
 cur = None
+excl_lines = set()   # source line numbers carrying LCOV_EXCL_BR_LINE for cur file
+
+# lcov honors LCOV_EXCL_BR_LINE for ordinary source branches, but NOT for
+# branches gcov attributes to a template body line that was inlined at call
+# sites in other files (e.g. FixedString<N>::encode's memcpy/memset dispatch in
+# sbe/types/composite_types.hpp). Those artifact branch pairs survive capture.
+# Honor the marker here so it is authoritative regardless of lcov's inlining
+# quirk: skip any BRDA whose line carries the marker in the source file.
+def load_excl(src_path):
+    lines = set()
+    try:
+        with open(src_path) as sf:
+            for i, ln in enumerate(sf, 1):
+                if "LCOV_EXCL_BR_LINE" in ln:
+                    lines.add(i)
+    except OSError:
+        pass
+    return lines
 
 with open(info) as f:
     for line in f:
         line = line.strip()
         if line.startswith("SF:"):
-            m = re.search(r"include/nexusfix/([^/]+)/", line[3:])
+            src = line[3:]
+            m = re.search(r"include/nexusfix/([^/]+)/", src)
             cur = m.group(1) if m else None
+            excl_lines = load_excl(src) if cur is not None else set()
         elif line.startswith("BRDA:"):
+            brda_line = int(line[5:].split(",")[0])
+            if brda_line in excl_lines:
+                continue  # excluded artifact branch (LCOV_EXCL_BR_LINE)
             taken = line.split(",")[-1]
             hit = 1 if taken not in ("-", "0") else 0
             overall[1] += 1

@@ -41,10 +41,10 @@ public:
     NFX_FORCE_INLINE static bool encode(
         char* NFX_RESTRICT buffer, std::string_view value) noexcept {
         const bool truncated = value.size() > N;
-        const std::size_t copy_len = truncated ? N : value.size();
+        const std::size_t copy_len = truncated ? N : value.size(); // LCOV_EXCL_BR_LINE: gcov attributes the inlined FixedString<N>::encode ternary/memcpy dispatch here; artifact branch pairs per call site, both logical arms covered by codec tests (TICKET_497 Phase 1, TICKET_499 WI3)
         std::memcpy(buffer, value.data(), copy_len); // LCOV_EXCL_BR_LINE: GCC-instrumented inlined memcpy dispatch; artifact branch pairs at each call site, not closeable by tests (TICKET_497 Phase 1, TICKET_497_3 WS1)
         // Pad remaining bytes with spaces
-        if (copy_len < N) {
+        if (copy_len < N) { // LCOV_EXCL_BR_LINE: inlined memset size-dispatch attributed here; artifact branch pairs per call site (TICKET_497 Phase 1, TICKET_499 WI3)
             std::memset(buffer + copy_len, PADDING_CHAR, N - copy_len); // LCOV_EXCL_BR_LINE: GCC-instrumented inlined memset dispatch; artifact branch pairs at each call site, not closeable by tests (TICKET_497 Phase 1, TICKET_497_3 WS1)
         }
         return !truncated;

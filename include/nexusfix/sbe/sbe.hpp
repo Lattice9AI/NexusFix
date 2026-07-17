@@ -62,14 +62,14 @@ struct UnknownMessage {
 template <typename Handler>
 NFX_HOT NFX_FORCE_INLINE void dispatch(
     const char* buffer, std::size_t length, Handler&& handler) noexcept {
-    if (length < MessageHeader::SIZE) {
+    if (length < MessageHeader::SIZE) { // LCOV_EXCL_BR_LINE: dispatch is a function template inlined per Handler type (and via the span overload); the logical too-short arm is covered by tests but GCC replicates the branch pair per instantiation (TICKET_499 WI3)
         UnknownMessage unknown{0, buffer, length};
         handler(unknown);
         return;
     }
 
-    auto header = MessageHeader::wrapForDecode(buffer, length);
-    if (!header.isValid()) {
+    auto header = MessageHeader::wrapForDecode(buffer, length); // LCOV_EXCL_BR_LINE: inlined MessageHeader::wrapForDecode/isValid, artifact branch pairs per template instantiation (TICKET_499 WI3)
+    if (!header.isValid()) { // LCOV_EXCL_BR_LINE: defensive check; the length < SIZE guard above already returned and buffer is non-null here, so isValid() is always true at this point (TICKET_499 WI3)
         UnknownMessage unknown{0, buffer, length};
         handler(unknown);
         return;
@@ -77,7 +77,7 @@ NFX_HOT NFX_FORCE_INLINE void dispatch(
 
     const SbeUint16 templateId = header.templateId();
 
-    switch (templateId) {
+    switch (templateId) { // LCOV_EXCL_BR_LINE: template-instantiated switch; all three arms (NewOrderSingle, ExecutionReport, default) are covered by dispatch tests, but GCC replicates the branch set per Handler instantiation (TICKET_499 WI3)
         case MessageHeader::TemplateId::NewOrderSingle: {
             auto codec = NewOrderSingleCodec::wrapForDecode(buffer, length);
             handler(codec);

@@ -79,13 +79,13 @@ public:
 
     // Check if buffer is valid for this message type
     [[nodiscard]] NFX_FORCE_INLINE bool isValid() const noexcept {
-        if (buffer_ == nullptr || length_ < TOTAL_SIZE) {
+        if (buffer_ == nullptr || length_ < TOTAL_SIZE) { // LCOV_EXCL_BR_LINE: NFX_FORCE_INLINE isValid guard inlined at every decode call site; both arms are covered by tests but GCC replicates the branch pair per site (TICKET_499 WI3, same artifact class as composite_types.hpp)
             return false;
         }
-        auto header = MessageHeader::wrapForDecode(buffer_, length_);
-        return header.isValid() &&
-               header.templateId() == TEMPLATE_ID &&
-               header.blockLength() == BLOCK_LENGTH;
+        auto header = MessageHeader::wrapForDecode(buffer_, length_); // LCOV_EXCL_BR_LINE: inlined MessageHeader::wrapForDecode, artifact branch pairs per call site (TICKET_499 WI3)
+        return header.isValid() && // LCOV_EXCL_BR_LINE: inlined MessageHeader::isValid, artifact branch pairs per call site (TICKET_499 WI3)
+               header.templateId() == TEMPLATE_ID && // LCOV_EXCL_BR_LINE: inlined short-circuit chain, artifact branch pairs per call site (TICKET_499 WI3)
+               header.blockLength() == BLOCK_LENGTH; // LCOV_EXCL_BR_LINE: inlined short-circuit chain, artifact branch pairs per call site (TICKET_499 WI3)
     }
 
     // Field accessors (hot path, zero-copy)
@@ -149,14 +149,14 @@ public:
 
     // Field encoders (fluent interface, return *this)
     NFX_FORCE_INLINE NewOrderSingleCodec& clOrdId(std::string_view value) noexcept {
-        if (!FixedString20::encode(mutableBody() + Offset::ClOrdId, value)) {
+        if (!FixedString20::encode(mutableBody() + Offset::ClOrdId, value)) { // LCOV_EXCL_BR_LINE: inlined FixedString::encode memcpy/memset dispatch, artifact branch pairs; the logical truncated arm is covered by tests (TICKET_499 WI3)
             truncated_ = true;
         }
         return *this;
     }
 
     NFX_FORCE_INLINE NewOrderSingleCodec& symbol(std::string_view value) noexcept {
-        if (!FixedString8::encode(mutableBody() + Offset::Symbol, value)) {
+        if (!FixedString8::encode(mutableBody() + Offset::Symbol, value)) { // LCOV_EXCL_BR_LINE: inlined FixedString::encode memcpy/memset dispatch, artifact branch pairs; the logical truncated arm is covered by tests (TICKET_499 WI3)
             truncated_ = true;
         }
         return *this;

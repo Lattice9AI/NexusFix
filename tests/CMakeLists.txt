@@ -44,6 +44,20 @@ add_executable(nexusfix_tests
     test_message_error_paths.cpp
     test_fault_injection.cpp
     test_fuzz_regressions.cpp
+    test_branch_coverage_499.cpp
+    test_branch_coverage_499_msgs.cpp
+    test_branch_coverage_499_md.cpp
+    test_branch_coverage_499_parser.cpp
+    test_branch_coverage_499_msgs2.cpp
+    test_branch_coverage_499_parsefail.cpp
+    test_branch_coverage_499_consteval.cpp
+    test_branch_coverage_499_sweep.cpp
+    test_branch_coverage_499_pools.cpp
+    test_branch_coverage_499_queues.cpp
+    test_branch_coverage_499_tables.cpp
+    test_branch_coverage_499_iter.cpp
+    test_branch_coverage_499_ts.cpp
+    test_branch_coverage_499_er.cpp
     test_boundary_sweep.cpp
     test_performance_gate.cpp
     test_platform.cpp
