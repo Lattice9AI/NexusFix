@@ -51,7 +51,7 @@ TEST_CASE("ObjectPool exhaustion and boundary arms", "[memory][object_pool][bran
 }
 
 TEST_CASE("ObjectPool allocate_raw / deallocate_raw arms", "[memory][object_pool][branch499][regression]") {
-    ObjectPool<long, 2> pool;
+    ObjectPool<int64_t, 2> pool;
     void* p1 = pool.allocate_raw();
     void* p2 = pool.allocate_raw();
     REQUIRE(p1);
