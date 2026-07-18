@@ -269,6 +269,31 @@ constexpr HeaderParseResult parse_header(
     FieldIterator iter{data};
     int fields_parsed = 0;
 
+    // Header tags are non-repeating in FIX 4.4: each may appear at most once.
+    // A duplicate makes the parsed header depend on how many fields precede it
+    // (the MAX_HEADER_FIELDS bound below can truncate the loop mid-header), so
+    // the same logical message parsed at two positions yields different header
+    // values. That non-determinism breaks parse/re-emit idempotency (a fuzzer
+    // found it via fuzz_serializer_roundtrip). Track which header tags have been
+    // seen and reject a repeat with DuplicateTag, matching StrictIndexedParser.
+    // Bit index per tag: 0=8 1=9 2=35 3=49 4=56 5=34 6=52 7=43 8=97 9=122.
+    auto header_bit = [](int t) constexpr -> int {
+        switch (t) {
+            case tag::BeginString::value:     return 0;
+            case tag::BodyLength::value:      return 1;
+            case tag::MsgType::value:         return 2;
+            case tag::SenderCompID::value:    return 3;
+            case tag::TargetCompID::value:    return 4;
+            case tag::MsgSeqNum::value:       return 5;
+            case tag::SendingTime::value:     return 6;
+            case tag::PossDupFlag::value:     return 7;
+            case tag::PossResend::value:      return 8;
+            case tag::OrigSendingTime::value: return 9;
+            default:                          return -1;  // body field
+        }
+    };
+    uint32_t seen_mask = 0;
+
     // Parse header fields: 7 required + optional (PossDupFlag, PossResend, OrigSendingTime).
     // The default case breaks the loop on the first non-header tag.
     constexpr int MAX_HEADER_FIELDS = 10;
@@ -281,6 +306,15 @@ constexpr HeaderParseResult parse_header(
             }
             result.error = ParseError{code, 0, iter.position()};
             return result;
+        }
+
+        if (const int bit = header_bit(field.tag); bit >= 0) [[likely]] {
+            const uint32_t flag = uint32_t{1} << bit;
+            if (seen_mask & flag) [[unlikely]] {
+                result.error = ParseError{ParseErrorCode::DuplicateTag, field.tag};
+                return result;
+            }
+            seen_mask |= flag;
         }
 
         switch (field.tag) {

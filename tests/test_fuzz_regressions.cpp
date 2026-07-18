@@ -248,3 +248,81 @@ TEST_CASE("Fuzz regression: bytes after CheckSum are not recorded (idempotent)",
         REQUIRE(parsed->field_at_safe(i).as_string() != "EVIL");
     }
 }
+
+// ============================================================================
+// Bug 6: duplicate header tag made the parsed header position-dependent
+// ============================================================================
+//
+// parse_header capped its loop at MAX_HEADER_FIELDS (10) recognized header
+// fields. When a non-repeating header tag appeared twice, which occurrence won
+// depended on how many fields preceded it: if the cap fired between the two
+// copies, the first won; otherwise the second (last-wins overwrite) did. The
+// serializer roundtrip harness re-emits a parsed message's recorded fields
+// after stripping 8/9/10, which shifts every field's position. A message with a
+// duplicate 56= that parsed as TargetCompID=first re-emitted to a frame that
+// reparsed as TargetCompID=second: same logical fields, different header. The
+// fuzzer trapped on the mismatch (fuzz_serializer_roundtrip.cpp).
+//
+// Fix: reject any repeated header tag with DuplicateTag, so the parsed header is
+// a function of field content, not field position. That restores idempotency:
+// a frame the parser accepts and re-emits parses back identically.
+
+TEST_CASE("Fuzz regression: duplicate header tag is rejected (idempotent header)",
+          "[fuzz][regression][parser]") {
+    constexpr char SOH = '\x01';
+
+    auto build = [](const std::string& body) {
+        std::string frame = std::string("8=FIX.4.4") + SOH +
+                            "9=" + std::to_string(body.size()) + SOH + body;
+        unsigned sum = 0;
+        for (unsigned char c : frame) sum += c;
+        char cs[8];
+        std::snprintf(cs, sizeof(cs), "10=%03u", sum % 256);
+        return frame + cs + SOH;
+    };
+
+    // Duplicate TargetCompID (56): the exact tag the fuzzer resolved two ways.
+    // Padded with repeated SendingTime so, on the original wire, the header cap
+    // used to fire between the two 56= copies (first-wins there) while the
+    // re-emitted, 8/9/10-stripped wire kept parsing to the second (last-wins).
+    {
+        std::string body =
+            std::string("35=D") + SOH + "49=SENDER" + SOH + "56=TARGET" + SOH +
+            "34=1" + SOH + "52=20231215-10:30:00" + SOH + "56=EVIL" + SOH +
+            "44=10" + SOH;
+        std::string wire = build(body);
+        auto r = nfx::ParsedMessage::parse(
+            std::span<const char>{wire.data(), wire.size()});
+        REQUIRE_FALSE(r.has_value());
+        REQUIRE(r.error().code == nfx::ParseErrorCode::DuplicateTag);
+        REQUIRE(r.error().tag == 56);
+    }
+
+    // Repeated BeginString (8) inside the body: this is how the original crash
+    // input reached the cap (several 8= copies before the real CompID fields).
+    {
+        std::string body =
+            std::string("35=D") + SOH + "8=X" + SOH + "49=SENDER" + SOH +
+            "56=TARGET" + SOH + "34=1" + SOH + "44=10" + SOH;
+        std::string wire = build(body);
+        auto r = nfx::ParsedMessage::parse(
+            std::span<const char>{wire.data(), wire.size()});
+        REQUIRE_FALSE(r.has_value());
+        REQUIRE(r.error().code == nfx::ParseErrorCode::DuplicateTag);
+        REQUIRE(r.error().tag == 8);
+    }
+
+    // A well-formed header with no repeated header tags still parses, and the
+    // parse/re-emit/reparse roundtrip the fuzzer performs stays consistent.
+    {
+        std::string body =
+            std::string("35=D") + SOH + "49=SENDER" + SOH + "56=TARGET" + SOH +
+            "34=7" + SOH + "52=20231215-10:30:00" + SOH + "44=10" + SOH;
+        std::string wire = build(body);
+        auto r = nfx::ParsedMessage::parse(
+            std::span<const char>{wire.data(), wire.size()});
+        REQUIRE(r.has_value());
+        REQUIRE(r->target_comp_id() == "TARGET");
+        REQUIRE(r->msg_seq_num() == 7u);
+    }
+}
