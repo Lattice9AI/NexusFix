@@ -36,6 +36,7 @@ set(NFX_FUZZ_HARNESSES
     fuzz_runtime_parser
     fuzz_session_input
     fuzz_serializer_roundtrip
+    fuzz_sbe_decode
 )
 
 foreach(harness ${NFX_FUZZ_HARNESSES})

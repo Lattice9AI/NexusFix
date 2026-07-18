@@ -442,7 +442,8 @@ jobs:
         run: |
           set -e
           for h in fuzz_structural_index fuzz_runtime_parser \
-                   fuzz_session_input fuzz_serializer_roundtrip; do
+                   fuzz_session_input fuzz_serializer_roundtrip \
+                   fuzz_sbe_decode; do
             echo "== smoke: $h =="
             # Scratch dir first (writable): new inputs land there, not in the
             # checked-in seed corpus. The seed corpus is a read-only second arg.
@@ -522,7 +523,8 @@ jobs:
         run: |
           set -e
           for h in fuzz_structural_index fuzz_runtime_parser \
-                   fuzz_session_input fuzz_serializer_roundtrip; do
+                   fuzz_session_input fuzz_serializer_roundtrip \
+                   fuzz_sbe_decode; do
             mkdir -p "fuzz-corpus-cache/$h"
             echo "== nightly: $h =="
             ./build-fuzz/fuzz/$h \

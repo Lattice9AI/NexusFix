@@ -10,6 +10,7 @@ Run from repo root:  python3 fuzz/gen_corpus.py
 Idempotent: overwrites the generated seeds, leaves corpus/<h>/regressions alone.
 """
 import os
+import struct
 
 SOH = "\x01"
 HARNESSES = [
@@ -17,6 +18,7 @@ HARNESSES = [
     "fuzz_runtime_parser",
     "fuzz_session_input",
     "fuzz_serializer_roundtrip",
+    "fuzz_sbe_decode",
 ]
 
 
@@ -91,11 +93,54 @@ MALFORMED = {
 }
 
 
+# SBE binary seeds (fuzz_sbe_decode): little-endian header
+# (blockLength, templateId, schemaId, version) + fixed-layout body.
+# Layouts mirror sbe/codecs/new_order_single.hpp (64B) and
+# execution_report.hpp (144B).
+
+def sbe_header(block_length, template_id, schema_id=1, version=1):
+    return struct.pack("<HHHH", block_length, template_id, schema_id, version)
+
+
+def sbe_str(value, n):
+    raw = value.encode("ascii")[:n]
+    return raw + b"\x00" * (n - len(raw))
+
+
+def sbe_nos():
+    body = (sbe_str("ORDER123", 20) + sbe_str("AAPL", 8) + b"1" + b"2" +
+            b"\x00\x00" + struct.pack("<qqq", 15025000000, 1000000, 1702636200_000000000))
+    return sbe_header(56, 1) + body
+
+
+def sbe_exec_report():
+    body = (sbe_str("EXCH-ORD-1", 20) + sbe_str("EXEC1", 20) +
+            sbe_str("ORDER123", 20) + sbe_str("AAPL", 8) +
+            b"1" + b"0" + b"0" + b"\x00" +
+            struct.pack("<qqqqqqqq", 15025000000, 1000000, 15025000000,
+                        1000000, 0, 1000000, 15025000000, 1702636200_000000000))
+    return sbe_header(136, 8) + body
+
+
+SBE_SEEDS = {
+    "nos": sbe_nos(),
+    "exec": sbe_exec_report(),
+    # Error-arm primers: truncation, unknown templateId, schema mismatch.
+    "nos_truncated": sbe_nos()[:32],
+    "header_only": sbe_header(56, 1),
+    "unknown_template": sbe_header(56, 99) + sbe_nos()[8:],
+    "bad_schema": sbe_header(56, 1, schema_id=7, version=3) + sbe_nos()[8:],
+    "blocklen_mismatch": sbe_header(136, 1) + sbe_nos()[8:],
+}
+
+
 def write(harness, name, data):
     d = os.path.join(REPO, "fuzz", "corpus", harness)
     os.makedirs(d, exist_ok=True)
+    if isinstance(data, str):
+        data = data.encode("latin-1")
     with open(os.path.join(d, name), "wb") as f:
-        f.write(data.encode("latin-1"))
+        f.write(data)
 
 
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
@@ -115,6 +160,9 @@ def main():
         write("fuzz_session_input", f"heartbeat_{ver}", heartbeat(bs, 3))
         write("fuzz_session_input", f"resend_{ver}", resend_request(bs, 2))
         write("fuzz_session_input", f"exec_{ver}", exec_report(bs, 2))
+
+    for name, data in SBE_SEEDS.items():
+        write("fuzz_sbe_decode", f"sbe_{name}", data)
 
     for name, data in MALFORMED.items():
         for h in HARNESSES:
