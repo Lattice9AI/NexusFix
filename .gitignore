@@ -104,3 +104,6 @@ docs/chatbot/audio/
 
 # Local scripts
 scripts/
+
+# Local Claude Code state (permissions, scheduled-task lock)
+.claude/
